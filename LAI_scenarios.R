@@ -69,8 +69,9 @@ test <-
   it13 %>% ungroup() %>% 
   dplyr::group_by(genus) %>% 
   summarize(  LAI_wm = weighted.mean(lai, canopy_cover_m2),
+              height_wm = weighted.mean(height_m, canopy_cover_m2),
               n = n()) %>% 
-  arrange(-n) %>% 
+  arrange(-LAI_wm) %>% 
   filter(n > 10)
 
 
