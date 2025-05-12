@@ -5,6 +5,12 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
+library(readr)
+library(prism)
+library(sf)
+library(purrr)
+
+install.packages("sf")
 
 ### select a few top anemophilous taxa from NPN #####################################
 #anemophilous angiosperms of potential allergenic concern
@@ -49,18 +55,23 @@ list_all_focal_taxa <- c(acer_species_list, alnus_species_list, betula_species_l
 npn_direct <- npn_download_status_data(
   request_source = 'Daniel Katz, Cornell University',
   species_ids = list_all_focal_taxa, # list_all_focal_taxa,
-  years = c(as.character(2010:2025)), #years to include
+  years = c(as.character(2012:2025)), #years to include
   phenophase_ids = c( 467, # increasing leaf size phenophase
                           # For deciduous tree and shrub species that have a single large flush of leaves at the beginning of the growing season, 
                           # we observe “Increasing leaf size”. This phenophase starts with the first unfolded leaf and ends when the majority of 
                           # leaves from that flush have expanded to their full mature size. It represents "green-up"—the period of time it takes the 
                           # plant to produce a full canopy of leaf tissue and build its photosynthetic capacity. 
                       501, 502), #angiosperms: 501 == "Open flowers", 502 == "Pollen release (flowers)" 
-   additional_fields = c("Observed_Status_Conflict_Flag", "partner_group")
+   additional_fields = c("Observed_Status_Conflict_Flag", "partner_group", "observedby_person_id",  "Observation_Comments",
+                         "AGDD", "gdd", "Daylength","Greenup_0", "MidGreenup_0", "Maturity_0") #
+  #additional_fields documentation : https://docs.google.com/document/d/1yNjupricKOAXn6tY1sI7-EwkcfwdGUZ7lxYv7fcPjO8/edit?tab=t.0
+ # six_leaf_layer = TRUE, six_bloom_layer = TRUE # agdd_layer = 32 
 )
 #npn_direct_raw <- npn_direct
+#write_csv(npn_direct, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_flow_leaf_download250507.csv")
+#npn_direct <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_flow_leaf_download250507.csv")
 
-
+#clean up and organize data
 npn_direct <- subset(npn_direct, observed_status_conflict_flag == "-9999")
 npn_direct <- filter(npn_direct, !(partner_group %in% c("CSU Chico NSCI 102", "SCMF Naturalists", 
                                                         "Sycamore Canyon Wilderness Park - Riverside",
@@ -78,10 +89,24 @@ npn_direct <- npn_direct %>%
                         intensity_value == "50-74%" ~ (0.5+0.74)/2,
                         intensity_value == "75-94%" ~ (0.75+0.94)/2,
                         intensity_value == "95% or more" ~ 0.97,
-                        phenophase_status == 1  ~ NA)) #assuming that when intensity value isn't given, a tree is halfway through flowering
+                        phenophase_status == 1  ~ NA)) %>%  #
+  arrange(individual_id, observation_date)
+#test <- npn_direct %>% filter(individual_id == 289346 & phenophase_id == 467)
 
+#add in how many observations each observer made
+obs_per_observer <- npn_direct %>% 
+  group_by(observedby_person_id) %>% 
+  summarize(n_obs_per_person = n()) %>% 
+  arrange(-n_obs_per_person) #summary() #ggplot(aes(x = n_obs_per_person)) + geom_histogram()
+  
+npn_direct <- left_join(npn_direct, obs_per_observer)
 
-test <- npn_direct %>% filter(individual_id == 289346 & phenophase_id == 467)
+# assess an individual observer
+# test <- npn_direct %>% 
+#   filter(observedby_person_id == "2002") %>% 
+#   filter(individual_id == 4318) %>% 
+#   filter(phenophase_id == 467) %>% 
+#   ggplot(aes(x = ymd(observation_date), y = intensity_p, color = phenophase_description)) + geom_point()
 
 
 #take the average date of leaf expansion for each individual tree in each year
@@ -95,8 +120,8 @@ indiv_leafout <- npn_direct %>% filter(phenophase_id == 467) %>%
 indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
   filter(phenophase_status == 1) %>% 
   filter(day_of_year < 173) %>%  #solstice
-  group_by(genus, species, individual_id, year_obs) %>% 
   filter(intensity_p > 0.2 & intensity_p < 0.8) %>% 
+  group_by(genus, species, individual_id, year_obs) %>% 
   summarize(leaf_mean = mean(day_of_year),
             leaf_early = min(day_of_year),
             leaf_late = max(day_of_year),
@@ -112,13 +137,13 @@ indiv_flow <- npn_direct %>% filter(phenophase_id == 501) %>%
   filter(day_of_year < 173) %>%  #solstice
   group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
   slice(which.min(abs(intensity_p - 0.5))) %>% 
-  filter(intensity_p > 0.2 & intensity_p < 0.8)
+  filter(intensity_p > 0.2) #"what percentage of all fresh flowers on the plant are open?"
 
 indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
   filter(phenophase_status == 1) %>% 
   filter(day_of_year < 173) %>%  #solstice
   group_by(genus, species, individual_id, year_obs) %>% 
-  filter(intensity_p > 0.2 & intensity_p < 0.8) %>% 
+  filter(intensity_p > 0.2) %>% 
   summarize(flow_mean = mean(day_of_year),
             flow_early = min(day_of_year),
             flow_late = max(day_of_year),
@@ -131,76 +156,134 @@ indiv_flow <- left_join(indiv_flow, indiv_flow_summary) %>%
 indiv_flow_join <- indiv_flow %>% 
   select(year_obs, individual_id, latitude, longitude, genus, species, common_name, flow_mean, flow_early, flow_late, flow_nobs, flow_duration, flow_intensity_p = intensity_p)
 
-#take the average date of pollen release for each individual in each year
-# indiv_pol_release <- npn_direct %>% filter(phenophase_id == 502) %>% 
-#   filter(phenophase_status == 1) %>% 
-#   filter(day_of_year < 173) %>%  #solstice
-#   group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
-#   summarize(pol_mean = mean(day_of_year),
-#             pol_early = min(day_of_year),
-#             pol_late = max(day_of_year),
-#             pol_nobs = n())
-
 #join leaf expansion and flowering and retain observations that have both
 lf <- left_join(indiv_leafout, indiv_flow_join) %>% 
-      filter(!is.na(flow_mean)) 
+  filter(!is.na(flow_mean)) 
 
-#lfp <- left_join(lf, indiv_pol_release)
 
-#visualize the difference between the two as a function of species, region
+#take the average date of pollen release for each individual in each year
+indiv_pol_release <- npn_direct %>% filter(phenophase_id == 502) %>%
+  filter(phenophase_status == 1) %>%
+  filter(intensity_value %in% c("Little","Some", "Lots")) %>% 
+  filter(day_of_year < 173) %>%  #solstice
+  group_by(genus, species, latitude, longitude, individual_id, year_obs) %>%
+  summarize(pol_mean = mean(day_of_year),
+            pol_early = min(day_of_year),
+            pol_late = max(day_of_year),
+            pol_dif = pol_late - pol_early,
+            pol_nobs = n()) %>% 
+  filter(pol_dif < 15)  #exclude observations that implausibly claim a tree was releasing pollen for over 2 wks 
+        # indiv_pol_release %>% 
+        #   group_by(pol_dif) %>% 
+        #   summarize(nobs = n())
 
-###download temperature data for each location in each year ####################
-library(prism)
-library(sf)
-library(purrr)
+
+###extract temperature data for each location in each year ####################
 prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
+#get_prism_monthlys(years = 2024:2025, type = "tmean") #updating my local dataset
+#get_prism_dailys(minDate = ymd("2025-05-01"), maxDate = ymd("2025-05-05"), type = "tmean") #updating my local dataset
+
 
 #prepare data to extract
-lf_sf <- lf %>% ungroup() %>% 
+lf_extract <- lf %>% ungroup() %>% 
+  mutate(year_obs = year(observation_date),
+         too_recent = case_when(year_obs == 2025 & flow_mean > 120 ~ "too recent",
+                                year_obs == 2025 & leaf_mean > 120 ~ "too recent",
+                                TRUE ~ "not too recent")) %>% 
+  filter(too_recent == "not too recent") %>% #removing observations from this month
   dplyr::select(individual_id, longitude, latitude, year_obs, flow_mean, leaf_mean) %>% 
-  distinct() %>% 
-  st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+  distinct() 
 
-#function to extract time period for each year of data
-extract_temp <- function(individual_id, year_obs, flow_mean, leaf_mean){ 
+
+### function to extract temperature for days around flowering/leaf out
+extract_temp_daily <- function(individual_id, year_obs, flow_mean, leaf_mean, longitude, latitude){ 
   individual_id_focal <- individual_id
-  #focal_yr <- lf_sf$year_obs[1]; flow_mean <- lf_sf$flow_mean; leaf_mean <- lf_sf$leaf_mean[1]; individual_id_focal <- lf_sf$individual_id[1]
-  date_min_doy <- max(flow_mean, leaf_mean) - 28
-  date_max_doy <- max(flow_mean, leaf_mean)
-  date_min <- ymd(paste0(year_obs, "/1/1")) + date_min_doy
-  date_max <- ymd(paste0(year_obs, "/1/1")) + date_max_doy
+  longitude_focal <- longitude
+  latitude_focal <- latitude
+  yr_focal <- year_obs
+  #year_obs <- lf_sf$year_obs[1]; flow_mean <- lf_sf$flow_mean; leaf_mean <- lf_sf$leaf_mean[1]; individual_id_focal <- lf_sf$individual_id[1]
+  date_min_doy <- max(flow_mean) - 30 #can substitute in flowering or leaf or the max of both here
+  date_max_doy <- max(flow_mean)
+  date_min <- ymd(paste0(yr_focal, "/1/1")) + date_min_doy
+  date_max <- ymd(paste0(yr_focal, "/1/1")) + date_max_doy
   
+  #print(date_min); print(date_max)
   tmean_rast_d <- prism_archive_subset(temp_period = "daily", type = "tmean", minDate = date_min, maxDate = date_max)
   tmean_rast2_d <- pd_stack(tmean_rast_d)
   r_mean <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
   
-  lf_sf_sub <- filter(lf_sf, year_obs == year_obs, individual_id == individual_id_focal)
-  tmean_data <- unlist(raster::extract(x = r_mean, 
-                                       y = lf_sf_sub)) %>% as.data.frame()  
+  lf_sub <- filter(lf_extract, year_obs == yr_focal, individual_id == individual_id_focal) 
+  #print(lf_sub)
+  lf_sub_sf <- lf_sub %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
   
-  lf_sf_sub2 <- lf_sf_sub %>%  
-    mutate(tmean = as.numeric(unlist(tmean_data)))
-  
-  lf_sf_sub2$geometry <- NULL
+  tmean_data <- unlist(raster::extract(x = r_mean,
+                                       y = lf_sub_sf)) %>% as.data.frame()
+
+  lf_sub2 <- lf_sub %>% mutate(tmean = as.numeric(unlist(tmean_data)))
+
   print(tmean_data)
-  return(lf_sf_sub2)
+  return(lf_sub2)
 }
 
-#extract_temp_yr(focal_yr = 2010, mo_start = 1, mo_end = 4)
-lf_sf_test <- lf_sf[1:1,]
-spring_temp <- purrr::pmap_dfr(.l = lf_sf_test, .f = extract_temp)
+#apply function to calculate temp for each observation individually
+#lf_test <- lf_extract[20:21,]
+spring_temp <- purrr::pmap_dfr(.l = lf_extract, .f = extract_temp_daily)
 
-?map_dfr
+npn_active_flow <- left_join(npn_active_flow, spring_temp)
 
-npn_active_flow <- left_join(npn_active_flow, spring_temp_site_yr)
+
+
+### extract monthly spring temperature in each year, one year at a time
+tmean_data_all_years_list <- list()
+yr_list <- 2012:2025
+for(i in 1:length(yr_list)){
+#create a raster of mean spring temperature for a particular year
+  tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = c(1,4), years = yr_list[i])
+  tmean_rast2_d <- pd_stack(tmean_rast_d)
+  tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+
+#convert the points to extract to sf
+  lf_yr <- lf_extract %>% filter(year_obs == yr_list[i])
+  lf_yr_sf <- lf_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+  
+#extract temperature for all points in that year
+  tmean_data_focal_year <- mutate(lf_yr, tmean_spring = unlist(
+      raster::extract(x = tmean_focal_year, y = lf_yr_sf)))
+  
+#combine results into a list
+  tmean_data_all_years_list[[i]] <- tmean_data_focal_year
+}
+
+#merge all the years together
+tmean_data_all_years_spring <- bind_rows(tmean_data_all_years_list)
+  
+#join back into the parent dataset
+lf <- left_join(lf, tmean_data_all_years_spring)
+
+
+### joining various datasets for data visualization
+lfp <- left_join(lf, indiv_pol_release)
+
+
+#write_csv(lfp, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250508.csv")
+#lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250508.csv")
+
 
 
 #### data visualization ########################################################
+# test <- lf %>% mutate(lf_dif = leaf_mean - flow_mean) %>% 
+#   arrange(lf_dif) %>% 
+#   filter(longitude > -90 & longitude < -60) %>% 
+#   filter(tmean_spring > 3 & tmean_spring < 9) 
+
+# test2 <- filter(npn_direct, individual_id == 132692) %>% 
+#   filter(phenophase_id == 467)
 
 lf %>% 
   #filter(latitude > 40.7 - 3 & latitude < 40.7 + 3) %>% 
   #filter(longitude > -74 - 3 & longitude < -74 + 3) %>% 
   filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 200) %>% 
   ggplot(aes(x = leaf_mean, y = flow_mean, color = species)) + geom_point(alpha = 0.2) +
   facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() +
   geom_smooth(method = lm, se = FALSE)
@@ -220,11 +303,84 @@ lf %>%
   ggplot(aes(x = longitude, y = latitude, col = flow_early - leaf_early)) + geom_point(size = 3) + theme_bw() + facet_wrap(~genus) +
   scale_color_viridis_c()
 
+lf %>% 
+  filter(longitude > -90) %>% 
+  ggplot(aes(x = tmean_spring , y = leaf_early, color = species)) + geom_point() + theme_bw() + facet_wrap(~genus) +
+  scale_color_viridis_d() + geom_smooth(method = "lm") 
+
+
+lf %>% 
+  filter(longitude > -90) %>% 
+  ggplot(aes(x = tmean_spring , y = flow_early )) + geom_point() + theme_bw() + facet_wrap(~genus, scales = "free") +
+  scale_color_viridis_c() + geom_smooth(method = "lm")
+
+lf %>% 
+  filter(longitude > -90) %>% 
+  filter(genus == "Quercus") %>% 
+  filter(tmean_spring > 3 & tmean_spring < 9) %>% 
+  ggplot(aes(x = leaf_early , y = flow_early, col = tmean_spring )) + geom_point() + theme_bw() + facet_wrap(~species, scales = "free") +
+  scale_color_viridis_c() + geom_smooth(method = "lm") + geom_abline(slope = 1, intercept = 0, lty= 2)
+
+lf %>% 
+  filter(longitude > -90) %>% 
+  filter(genus == "Acer") %>% 
+   ggplot(aes(x = leaf_early, y = flow_early )) + geom_point() + theme_bw() + facet_wrap(~species) +
+  scale_color_viridis_c() + geom_smooth(method = "lm") + geom_abline(slope = 1, intercept = 0, lty= 2)
 
 
 
 
+lf %>% 
+  filter(longitude > -90) %>% 
+  ggplot(aes(x = longitude, y = latitude, col = tmean_spring)) + geom_point(size = 2, alpha = 0.5) + theme_bw() + 
+  scale_color_viridis_c()
+
+
+lf %>% 
+  filter(longitude > -90) %>% 
+  filter(genus == "Quercus") %>% 
+  filter(tmean_spring > 3 & tmean_spring < 9) %>% 
+  ggplot(aes(x = leaf_early- flow_early)) + geom_histogram() + theme_bw() + facet_wrap(~species, scales = "free") +
+  scale_color_viridis_c() 
 
 
 
+#visualize pollen release
+lfp %>% 
+  group_by(genus) %>%
+  filter(!is.na(pol_mean)) %>% 
+  summarize(n = n())
+  
+lfp %>% 
+#  filter(tmean_spring > 3 & tmean_spring < 9) %>% 
+  ggplot(aes(x = flow_mean - pol_mean)) + geom_histogram() + theme_bw() + facet_wrap(~genus, scales = "free") +
+  scale_color_viridis_c() 
+  
+  summary(lf$n_obs_per_person)
+  
+fitted_models <- lf %>% 
+  filter(n_obs_per_person > 1000) %>% 
+  mutate(gen_sp = paste(genus, species)) %>% 
+  nest(data = -gen_sp) %>% 
+  mutate(mod1 = map(data, ~lm(flow_mean ~ leaf_mean, data = .)), tidied = map(mod1, tidy)) %>% unnest(tidied)
 
+glance <- fitted_models %>% mutate(tidy = map(mod1, broom::tidy),
+                                glance = map(mod1, broom::glance),
+                                augment = map(mod1, broom::augment),
+                                rsq = glance %>% map_dbl('r.squared'),
+                                slope = tidy %>% map_dbl(function(x) x$estimate[2]))
+glance %>% 
+  filter(gen_sp %in% c("Quercus rubra", "Acer platanoides", "Populus deltoides"))
+
+
+lf %>% 
+  filter(genus == "Acer" & species == "rubrum") %>% 
+  filter(longitude > -90) %>% 
+  filter(greenup_0 != -9999) %>% 
+  ggplot(aes(x = greenup_0, y = flow_mean)) + geom_point()
+
+fitted_models
+fitted_models$model
+library(broom)
+fitted_models %>% tidy(model)
+rowwise(fitted_models) %>% tidy(model)
