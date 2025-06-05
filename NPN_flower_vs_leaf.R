@@ -9,8 +9,9 @@ library(readr)
 library(prism)
 library(sf)
 library(purrr)
+library(broom)
+library(robustbase)
 
-install.packages("sf")
 
 ### select a few top anemophilous taxa from NPN #####################################
 #anemophilous angiosperms of potential allergenic concern
@@ -270,6 +271,347 @@ lfp <- left_join(lf, indiv_pol_release)
 
 
 
+### get temperature  for indiv_leafout for finding outliers ########################################################
+#starting with the raw data and extracting relevant bits
+indiv_leafout_peak <- npn_direct %>% filter(phenophase_id == 467) %>% 
+  filter(phenophase_status == 1) %>% 
+  group_by(genus, species, individual_id, year_obs) %>% 
+  slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
+  filter(intensity_p > 0.2 & intensity_p < 0.8)
+
+indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
+  filter(phenophase_status == 1) %>% 
+  filter(intensity_p > 0.2 & intensity_p < 0.8) %>% 
+  group_by(genus, species, individual_id, year_obs) %>% 
+  summarize(leaf_mean = mean(day_of_year),
+            leaf_early = min(day_of_year),
+            leaf_late = max(day_of_year),
+            leaf_nobs = n()) %>% 
+  mutate(leafout_duration = leaf_late - leaf_early) %>% 
+  ungroup()
+
+#filter out bad observations and prepare data to extract
+indiv_leafout <- left_join(indiv_leafout_peak, indiv_leafout_summary) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(leafout_duration < 15) %>% 
+  filter(leaf_late < 173) %>%  #solstice
+   mutate(year_obs = year(observation_date),
+         too_recent = case_when(year_obs == 2025 & leaf_mean > 120 ~ "too recent",
+                                TRUE ~ "not too recent")) %>% 
+  filter(too_recent == "not too recent") %>% #removing observations from this month
+  dplyr::select(genus, species, 
+                individual_id, n_obs_per_person, longitude, latitude, year_obs, 
+                leaf_early, leaf_mean, leaf_late, leaf_nobs, leafout_duration, intensity_p,
+                gdd, daylength
+                ) %>% 
+  ungroup()
+
+## extract monthly spring temperature in each year, one year at a time
+t_data_all_years_list <- list()
+t_data_all_years_months <- indiv_leafout
+yr_list <- 2012:2025
+for(j in 1:4){ #start month loop
+for(i in 1:length(yr_list)){ #start year loop
+  #create a raster of mean spring temperature for a particular year
+  tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+  tmean_rast2_d <- pd_stack(tmean_rast_d)
+  tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+  
+  #convert the points to extract to sf
+  l_yr <- indiv_leafout %>% filter(year_obs == yr_list[i])
+  l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+  
+  #extract temperature for all points in that year
+  t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+                              raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+  
+  #combine results into a list
+  t_data_all_years_list[[i]] <- t_data_focal_year
+}
+
+#merge all the years together
+t_data_all_years_month <- bind_rows(t_data_all_years_list)
+
+#join the different months
+t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
+} #end month loop
+
+
+#join back into the parent dataset
+indiv_leafout_t <- left_join(indiv_leafout, t_data_all_years_months)
+
+#some derived variables
+indiv_leafout_t <- indiv_leafout_t %>% rowwise() %>% 
+  mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
+
+
+
+
+
+
+### get temperature  for indiv_flow for finding outliers ########################################################
+#starting with the raw data and extracting relevant bits
+indiv_flow_peak <- npn_direct %>% filter(phenophase_id == 501) %>% 
+  filter(phenophase_status == 1) %>% 
+  group_by(genus, species, individual_id, year_obs) %>% 
+  slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
+  filter(intensity_p > 0.2 ) #"what percentage of all fresh flowers on the plant are open?"
+
+indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
+  filter(phenophase_status == 1) %>% 
+  filter(intensity_p > 0.2 ) %>% 
+  group_by(genus, species, individual_id, year_obs) %>% 
+  summarize(flow_mean = mean(day_of_year),
+            flow_early = min(day_of_year),
+            flow_late = max(day_of_year),
+            flow_nobs = n()) %>% 
+  mutate(flow_duration = flow_late - flow_early) %>% 
+  ungroup()
+
+#filter out bad observations and prepare data to extract
+indiv_flow <- left_join(indiv_flow_peak, indiv_flow_summary) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(flow_duration < 15) %>% 
+  #filter(flow_late < 173) %>%  #solstice
+  mutate(year_obs = year(observation_date),
+         too_recent = case_when(year_obs == 2025 & flow_mean > 120 ~ "too recent",
+                                TRUE ~ "not too recent")) %>% 
+  filter(too_recent == "not too recent") %>% #removing observations from this month
+  dplyr::select(genus, species, 
+                individual_id, n_obs_per_person, longitude, latitude, year_obs, 
+                flow_early, flow_mean, flow_late, flow_nobs, flow_duration, intensity_p,
+                gdd, daylength
+  ) %>% 
+  ungroup()
+
+## extract monthly spring temperature in each year, one year at a time
+t_data_all_years_list <- list()
+t_data_all_years_months <- indiv_flow
+yr_list <- 2012:2025
+for(j in 1:4){ #start month loop
+  for(i in 1:length(yr_list)){ #start year loop
+    #create a raster of mean spring temperature for a particular year
+    tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+    tmean_rast2_d <- pd_stack(tmean_rast_d)
+    tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+    
+    #convert the points to extract to sf
+    l_yr <- indiv_flow %>% filter(year_obs == yr_list[i])
+    l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+    
+    #extract temperature for all points in that year
+    t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+      raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+    
+    #combine results into a list
+    t_data_all_years_list[[i]] <- t_data_focal_year
+  }
+  
+  #merge all the years together
+  t_data_all_years_month <- bind_rows(t_data_all_years_list)
+  
+  #join the different months
+  t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
+} #end month loop
+
+
+#join back into the parent dataset
+indiv_flow_t <- left_join(indiv_flow, t_data_all_years_months)
+
+#some derived variables
+indiv_flow_t <- indiv_flow_t %>% rowwise() %>% 
+  mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
+
+
+
+### data visualization for finding outliers of leafout in the broader leafout dataset ###########################
+# assessing which leafout observations are unusual for one species
+ds <- indiv_leafout_t %>% filter(genus == "Quercus", species == "rubra") #%>% filter(gdd > 0)
+#ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
+
+#fit a robust regression using the MM estimator
+mmfit <- lmrob(leaf_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
+               data = ds, method = "MM") #+ t_month_2
+summary(mmfit)
+
+#some additional visualization
+# mmfit_df <- data.frame(leaf_mean = mmfit$model[,1], t_mean_3 = mmfit$model[,4], # t_mean_2 = mmfit$model[,3],
+#                        resids = mmfit$residuals, weights = mmfit$rweights)
+# ggplot(mmfit_df, aes(x = resids, y = weights, color = weights)) + geom_point() + theme_bw()
+# ggplot(mmfit_df, aes(x = t_mean_3, y = leaf_mean, color = weights)) + geom_point() + theme_bw()
+# hist(mmfit$residuals)
+
+#passing off the weights and residuals from the lmrob
+ds2 <- ds %>% mutate(weights = mmfit$rweights, 
+              residuals = mmfit$residuals) %>% 
+  select(genus, species, individual_id, year_obs, weights, residuals)
+
+ds3 <- left_join(lfp, ds2)
+
+ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>% 
+  filter(weights > .75) %>% 
+  ggplot(aes(x = leaf_mean, y = flow_mean, color = weights)) + geom_point() +
+  facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_c()+
+  geom_smooth(method = lm, se = TRUE)
+
+ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>% 
+  mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
+  filter(weights > .8) %>% 
+  ggplot(aes(x = dif_leaf_flow))+ #geom_histogram() +
+  stat_ecdf(geom = "step")
+
+ds4 <- ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>%  filter(weights > .8) 
+  
+fit <- lm(flow_mean ~ leaf_mean , data = ds4)
+summary(fit)
+  
+quantile(fit$residuals, probs = c(.10, .25, .75, .90))
+
+
+
+
+
+
+### data visualization for finding outliers of flow in the broader flow dataset ###########################
+# assessing which flow observations are unusual for one species
+ds <- indiv_flow_t %>% filter(genus == "Quercus", species == "rubra") #%>% filter(gdd > 0)
+#ggplot(ds, aes(x = t_month_3, y = flow_mean)) + geom_point() + theme_bw()
+
+#fit a robust regression using the MM estimator
+mmfit_flow <- lmrob(flow_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
+               data = ds, method = "MM") #+ t_month_2
+summary(mmfit_flow)
+
+#passing off the weights and residuals from the lmrob
+ds2 <- ds %>% mutate(weights_flow = mmfit_flow$rweights, 
+                     residuals_flow = mmfit_flow$residuals) %>% 
+  select(genus, species, individual_id, year_obs, weights_flow, residuals_flow)
+
+ds3 <- left_join(lfp, ds2)
+
+ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>% 
+  #filter(weights > .75) %>% 
+  ggplot(aes(x = leaf_mean, y = flow_mean, color = weights_flow)) + geom_point() +
+  facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_c()+
+  geom_smooth(method = lm, se = TRUE)
+
+ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>% 
+  mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
+  #filter(weights_flow > .8) %>% 
+  ggplot(aes(x = dif_leaf_flow))+ #geom_histogram() +
+  stat_ecdf(geom = "step")
+
+ds4 <- ds3 %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") %>%  filter(weights_flow > .8) 
+
+fit <- lm(flow_mean ~ leaf_mean , data = ds4)
+summary(fit)
+
+quantile(fit$residuals, probs = c(.10, .25, .75, .90))
+
+
+
+
+
+### finding leaf and flow outliers and flagging them #####################################################
+lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% print(n = 40)
+focal_genus <- "Acer"
+focal_species <- "rubrum"
+
+# assessing which leafout observations are unusual for one species
+ds_leaf <- indiv_leafout_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
+
+#fit a robust regression using the MM estimator
+mmfit_leaf <- lmrob(leaf_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
+               data = ds_leaf, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
+
+#passing off the weights and residuals from the lmrob
+ds2_leaf <- ds_leaf %>% mutate(weights_leaf = mmfit_leaf$rweights, 
+                     residuals_leaf = mmfit_leaf$residuals) %>% 
+  select(genus, species, individual_id, year_obs, weights_leaf, residuals_leaf) %>% 
+  left_join(lfp, .)
+
+# assessing which flow observations are unusual for one species
+ds_flow <- indiv_flow_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #%>% filter(gdd > 0) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
+
+#fit a robust regression using the MM estimator
+mmfit_flow <- lmrob(flow_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
+                    data = ds_flow, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
+
+#passing off the weights and residuals from the lmrob
+ds2_flow <- ds_flow %>% mutate(weights_flow = mmfit_flow$rweights, 
+                               residuals_flow = mmfit_flow$residuals) %>% 
+  select(genus, species, individual_id, year_obs, weights_flow, residuals_flow) %>% 
+  left_join(lfp, .)
+
+#join flowers and leaf
+ds3 <- left_join(ds2_leaf, ds2_flow) %>% 
+  filter(genus == focal_genus, species == focal_species) %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
+  mutate(fl_outlier = case_when(weights_leaf < 0.8 ~ "leaf outlier",
+                                weights_flow < 0.8 ~ "flower outlier",
+                                .default = "okay"))
+
+#visualize outliers of flowers or leaves vs temperatures
+ds3 %>% 
+  ggplot(aes(x = leaf_mean, y = flow_mean, color = fl_outlier)) + geom_point() +
+  facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d() 
+#+ geom_smooth(method = lm, se = TRUE)
+ds3 %>%  # filter(weights_leaf > .8) %>%   filter(weights_flow > .8) %>% 
+  ggplot(aes(x = dif_leaf_flow, color = fl_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
+
+#extract statistics
+ds4 <- ds3 %>% 
+  filter(weights_leaf > .8) %>% 
+  filter(weights_flow > .8) 
+
+fit <- lm(dif_leaf_flow ~ leaf_mean + latitude, data = ds4)
+summary(fit)
+
+quantile(fit$residuals, probs = c(.10, .25, .75, .90))
+quantile(fit$fitted.values, probs = c(.10, .25, .75, .90))
+
+
+ds5 <- ds4 %>% 
+  mutate(pred_dif_leaf_flow = predict.lm(object = fit, newdata = ds4, level = 0.50),
+         pred_dif_leaf_flow_lwr = predict.lm(object = fit, newdata = ds4, level = 0.1),
+         pred_dif_leaf_flow_uwr = predict.lm(object = fit, newdata = ds4, level = 0.9))
+
+#working on getting a prediction interval out of this now
+ggplot(ds5, aes(x =  leaf_mean, y = flow_mean )) + geom_point() + geom_abline(slope = 1, intercept = 0) + theme_bw() +
+  geom_pointrange(aes(x = leaf_mean, ymin = pred_dif_leaf_flow_lwr, ymax = pred_dif_leaf_flow), col = "red")
+
+  geom_point(aes(x = leaf_mean, y = leaf_mean - pred_dif_leaf_flow_lwr), col = "orange") +
+  geom_point(aes(x = leaf_mean, y = leaf_mean - pred_dif_leaf_flow), col = "red")
+
+
+
+
+
+
+
+
+
+
 #### data visualization ########################################################
 # test <- lf %>% mutate(lf_dif = leaf_mean - flow_mean) %>% 
 #   arrange(lf_dif) %>% 
@@ -279,49 +621,59 @@ lfp <- left_join(lf, indiv_pol_release)
 # test2 <- filter(npn_direct, individual_id == 132692) %>% 
 #   filter(phenophase_id == 467)
 
-lf %>% 
+lfp %>% 
   #filter(latitude > 40.7 - 3 & latitude < 40.7 + 3) %>% 
   #filter(longitude > -74 - 3 & longitude < -74 + 3) %>% 
+  #filter(individual_id == 4354) %>% 
   filter(longitude > -90 & longitude < -60) %>% 
-  filter(n_obs_per_person > 200) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  #filter(genus == "Quercus", species == "rubra") %>% 
   ggplot(aes(x = leaf_mean, y = flow_mean, color = species)) + geom_point(alpha = 0.2) +
   facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() +
-  geom_smooth(method = lm, se = FALSE)
+   geom_smooth(method = lm, se = TRUE)
 
+lfp_sub <- lfp %>% 
+  filter(longitude > -90 & longitude < -60) %>% 
+  filter(n_obs_per_person > 10) %>% 
+  filter(genus == "Quercus", species == "rubra") 
+fit <- lm(flow_mean ~ leaf_mean + tmean_spring  , data = lfp_sub)
+summary(fit)
 
-lf %>% 
+lfp %>% 
  # filter(latitude > 40.7 - 3 & latitude < 40.7 + 3) %>% 
  # filter(longitude > -74 - 3 & longitude < -74 + 3) %>% 
   filter(longitude > -90 & longitude < -60) %>% 
   ggplot(aes(x = flow_early - leaf_early, fill = species)) + geom_histogram() +  facet_wrap(~genus, scales = "free") + theme_bw() + geom_vline(xintercept = 0, col = "red", lty = 2)
 
 
-lf %>% 
+lfp %>% 
 #  filter(latitude > 40.7 - 3 & latitude < 40.7 + 3) %>% 
  # filter(longitude > -74 - 3 & longitude < -74 + 3) %>% 
   filter(longitude > -90) %>% 
   ggplot(aes(x = longitude, y = latitude, col = flow_early - leaf_early)) + geom_point(size = 3) + theme_bw() + facet_wrap(~genus) +
   scale_color_viridis_c()
 
-lf %>% 
+indiv_leafout %>% 
   filter(longitude > -90) %>% 
   ggplot(aes(x = tmean_spring , y = leaf_early, color = species)) + geom_point() + theme_bw() + facet_wrap(~genus) +
-  scale_color_viridis_d() + geom_smooth(method = "lm") 
+  #scale_color_viridis_d() + 
+  #geom_smooth(method = lm, formula = y ~ splines::bs(x, 3), se = TRUE)
+  geom_smooth(method = "lm") 
 
 
-lf %>% 
+lfp %>% 
   filter(longitude > -90) %>% 
   ggplot(aes(x = tmean_spring , y = flow_early )) + geom_point() + theme_bw() + facet_wrap(~genus, scales = "free") +
   scale_color_viridis_c() + geom_smooth(method = "lm")
 
-lf %>% 
+lfp %>% 
   filter(longitude > -90) %>% 
   filter(genus == "Quercus") %>% 
   filter(tmean_spring > 3 & tmean_spring < 9) %>% 
   ggplot(aes(x = leaf_early , y = flow_early, col = tmean_spring )) + geom_point() + theme_bw() + facet_wrap(~species, scales = "free") +
   scale_color_viridis_c() + geom_smooth(method = "lm") + geom_abline(slope = 1, intercept = 0, lty= 2)
 
-lf %>% 
+lfp %>% 
   filter(longitude > -90) %>% 
   filter(genus == "Acer") %>% 
    ggplot(aes(x = leaf_early, y = flow_early )) + geom_point() + theme_bw() + facet_wrap(~species) +
@@ -330,13 +682,13 @@ lf %>%
 
 
 
-lf %>% 
+lfp %>% 
   filter(longitude > -90) %>% 
   ggplot(aes(x = longitude, y = latitude, col = tmean_spring)) + geom_point(size = 2, alpha = 0.5) + theme_bw() + 
   scale_color_viridis_c()
 
 
-lf %>% 
+lfp %>% 
   filter(longitude > -90) %>% 
   filter(genus == "Quercus") %>% 
   filter(tmean_spring > 3 & tmean_spring < 9) %>% 
@@ -358,8 +710,8 @@ lfp %>%
   
   summary(lf$n_obs_per_person)
   
-fitted_models <- lf %>% 
-  filter(n_obs_per_person > 1000) %>% 
+fitted_models <- lfp %>% 
+  filter(n_obs_per_person > 100) %>% 
   mutate(gen_sp = paste(genus, species)) %>% 
   nest(data = -gen_sp) %>% 
   mutate(mod1 = map(data, ~lm(flow_mean ~ leaf_mean, data = .)), tidied = map(mod1, tidy)) %>% unnest(tidied)
@@ -368,12 +720,15 @@ glance <- fitted_models %>% mutate(tidy = map(mod1, broom::tidy),
                                 glance = map(mod1, broom::glance),
                                 augment = map(mod1, broom::augment),
                                 rsq = glance %>% map_dbl('r.squared'),
+                                mse = glance %>% map_dbl('mse'),
+                                nobs = glance %>% map_dbl('nobs'),
                                 slope = tidy %>% map_dbl(function(x) x$estimate[2]))
 glance %>% 
   filter(gen_sp %in% c("Quercus rubra", "Acer platanoides", "Populus deltoides"))
 
+glance$glance
 
-lf %>% 
+lfp %>% 
   filter(genus == "Acer" & species == "rubrum") %>% 
   filter(longitude > -90) %>% 
   filter(greenup_0 != -9999) %>% 
@@ -381,6 +736,6 @@ lf %>%
 
 fitted_models
 fitted_models$model
-library(broom)
+
 fitted_models %>% tidy(model)
 rowwise(fitted_models) %>% tidy(model)
