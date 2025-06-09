@@ -525,17 +525,19 @@ indiv_flow_t <- indiv_flow_t %>% rowwise() %>%
 # summary(fit)
 # 
 # quantile(fit$residuals, probs = c(.10, .25, .75, .90))
-# 
+ 
 
 
 
+### analyze the difference between leafout and flowering for each species and create tables and figures ################
+lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% print(n = 80)
 
-### finding leaf and flow outliers and flagging them #####################################################
-lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% print(n = 40)
+#inputs for loop
 focal_genus <- "Quercus"
 focal_species <- "rubra"
+weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
 
-# assessing which leafout observations are unusual for one species
+### find leaf outliers and flag them 
 ds_leaf <- indiv_leafout_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
 
 #fit a robust regression using the MM estimator
@@ -545,14 +547,14 @@ mmfit_leaf <- lmrob(leaf_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(
 # summary(mmfit_leaf)
 # hist(mmfit_leaf$rweights)
 
-#passing off the weights and residuals from the lmrob
+#extract the weights and residuals from the lmrob and join them back to the leaf data
 ds2_leaf <- ds_leaf %>% mutate(weights_leaf = mmfit_leaf$rweights, 
                      residuals_leaf = mmfit_leaf$residuals) %>% 
   select(genus, species, individual_id, year_obs, weights_leaf, residuals_leaf,
          t_month_1, t_month_2, t_month_3, t_month_4) %>% 
   left_join(lfp, .)
 
-# assessing which flow observations are unusual for one species
+### find flow outliers and flag them
 ds_flow <- indiv_flow_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #%>% filter(gdd > 0) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
 
 #fit a robust regression using the MM estimator
@@ -571,22 +573,23 @@ ds3 <- left_join(ds2_leaf, ds2_flow) %>%
   filter(longitude > -90 & longitude < -60) %>% 
   filter(n_obs_per_person > 10) %>% 
   mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
-  mutate(fl_outlier = case_when(weights_leaf < 0.8 ~ "leaf outlier",
-                                weights_flow < 0.8 ~ "flower outlier",
+  mutate(fl_outlier = case_when(weights_leaf < weight_cutoff_param ~ "leaf outlier",
+                                weights_flow < weight_cutoff_param ~ "flower outlier",
                                 .default = "okay"))
 
 #visualize outliers of flowers or leaves vs temperatures
 ds3 %>% 
   ggplot(aes(x = leaf_mean, y = flow_mean, color = fl_outlier)) + geom_point() +
   facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d() 
-#+ geom_smooth(method = lm, se = TRUE)
+  #+ geom_smooth(method = lm, se = TRUE)
+
 ds3 %>%  # filter(weights_leaf > .8) %>%   filter(weights_flow > .8) %>% 
   ggplot(aes(x = dif_leaf_flow, color = fl_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
 
 #extract statistics
 ds4 <- ds3 %>% 
-  filter(weights_leaf > .8) %>% 
-  filter(weights_flow > .8) 
+  filter(weights_leaf > weight_cutoff_param) %>% 
+  filter(weights_flow > weight_cutoff_param) 
 
 fit <- lm(dif_leaf_flow ~ leaf_mean 
           + t_month_1 + t_month_2 + t_month_3 + t_month_4 +  elevation_in_meters + latitude 
@@ -596,7 +599,7 @@ summary(fit)
 # quantile(fit$residuals, probs = c(.10, .25, .75, .90))
 # quantile(fit$fitted.values, probs = c(.10, .25, .75, .90))
 
-flow_dif_preds <- predict.lm(object = fit, newdata = ds4, interval = "prediction", level = 0.95,
+flow_dif_preds <- predict.lm(object = fit, newdata = ds4, interval = "prediction", level = 0.382924,
                              se.fit = TRUE)
   
 ds5 <- ds4 %>% mutate(
@@ -610,6 +613,55 @@ ggplot(ds5, aes(x =  leaf_mean, y = flow_mean )) + geom_point() + geom_abline(sl
                       y = leaf_mean - pred_dif_leaf_flow, 
                       ymin = leaf_mean - pred_dif_leaf_flow_lwr, 
                       ymax = leaf_mean - pred_dif_leaf_flow_upr), col = "red", alpha = 0.3)
+
+
+flow_dif_preds$fit[,3] - flow_dif_preds$fit[,2]
+
+flow_dif_preds$residual.scale * flow_dif_preds$se.fit
+
+#### creating a prediction for an NYC tree in 2024 ------------------------------------------------------
+## extract temperature data for that tree
+#monthly t_mean raster stack
+tmean_rast_d <- pd_stack(prism_archive_subset(temp_period = "monthly", type = "tmean", mon = c(1,2,3,4), years = 2024))
+
+#coords for nyc to extract from raster
+nyc_coords <- data.frame(longitude = -73.97, latitude = 40.78) %>% 
+  st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+
+#extract temperature for nyc for that year in those months
+t_mean_nyc_months <- as.vector(raster::extract(x = tmean_rast_d, y = nyc_coords))
+
+#fields required for prediction
+nyc_example_tree_pred_data <- data.frame(leaf_mean = 130, #temporary placeholder
+                                    t_month_1 = t_mean_nyc_months[1],
+                                    t_month_2 = t_mean_nyc_months[2],
+                                    t_month_3 = t_mean_nyc_months[3],
+                                    t_month_4 = t_mean_nyc_months[4],
+                                    elevation_in_meters = 30, 
+                                    latitude = 40.78)
+
+
+
+### creating main text table
+table_lf <- data.frame(genus = focal_genus, species = focal_species, nobs = nrow(ds5), 
+                       lf_dif_global_emp_mean = round(mean(ds5$dif_leaf_flow), 3),
+                       lf_dif_gloab_emp_sd = round(sd(ds5$dif_leaf_flow), 3),
+                       lf_dif_pred_nyc_2024_mean = flow_dif_preds_nyc$fit[1],
+                       lf_dif_pred_nyc_2024_se = flow_dif_preds_nyc$se.fit)
+
+
+### creating SI table
+
+
+
+
+
+
+
+
+
+
+
 
 
 ### creating predictions for the proportion of flowering on each particular day using results from prediction ##################
@@ -642,6 +694,41 @@ test <- tree_all %>%
   summarize(day_total = sum(rel_flow_day))
 
 #%>% ggplot(aes(x = pred_day, y = day_total)) + geom_point() + facet_wrap(~year_obs)
+
+
+
+
+#some messing around as I think about how to effectively predict the probability of peak flowering being on each day
+
+test <- data.frame(level = seq(0, 0.99, by = 0.01), fit = rep(NA, 100), lwr = rep(NA, 100), upr = rep(NA,100))
+
+for(i in 1:100){
+flow_dif_preds_nyc <- predict.lm(object = fit, newdata = nyc_example_tree_pred_data, interval = "prediction", level = test$level[i],
+                             se.fit = TRUE)
+
+test$fit[i] <- flow_dif_preds_nyc$fit[,1] 
+test$lwr[i] <- flow_dif_preds_nyc$fit[,2]
+test$upr[i] <- flow_dif_preds_nyc$fit[,3]
+}
+
+test %>% mutate( full = upr - lwr,
+                 difup = upr - fit,
+                 difdown = fit - lwr) %>% 
+  ggplot(aes(x = level, y = full)) + geom_point()
+
+plot(test2, test)
+test2<-  seq(0, 0.98, by = 0.01)
+
+test3 <- data.frame(test2, test)
+
+
+
+
+
+
+
+
+
 
 
 
