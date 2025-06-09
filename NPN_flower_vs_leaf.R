@@ -530,12 +530,24 @@ indiv_flow_t <- indiv_flow_t %>% rowwise() %>%
 
 
 ### analyze the difference between leafout and flowering for each species and create tables and figures ################
-lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% print(n = 80)
+npn_species_to_analyze <- lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) #%>% print(n = 80)
 
+#loading in the nyc data to get median leafout date per species for nyc in 2024 for table 1
+nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
+
+#creating some files to paste into
+table_lf_all_list <- list()
+table_si_all_list <- list()
+
+#start species loop
+for(focal_sp_i in 44:44){
+  
 #inputs for loop
-focal_genus <- "Quercus"
-focal_species <- "rubra"
-weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
+  
+  focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
+  focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
+  weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
+
 
 ### find leaf outliers and flag them 
 ds_leaf <- indiv_leafout_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
@@ -573,33 +585,37 @@ ds3 <- left_join(ds2_leaf, ds2_flow) %>%
   filter(longitude > -90 & longitude < -60) %>% 
   filter(n_obs_per_person > 10) %>% 
   mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
-  mutate(fl_outlier = case_when(weights_leaf < weight_cutoff_param ~ "leaf outlier",
+  mutate(temp_outlier = case_when(weights_leaf < weight_cutoff_param ~ "leaf outlier",
                                 weights_flow < weight_cutoff_param ~ "flower outlier",
-                                .default = "okay"))
+                                .default = "not an outlier"))
 
-#visualize outliers of flowers or leaves vs temperatures
-ds3 %>% 
-  ggplot(aes(x = leaf_mean, y = flow_mean, color = fl_outlier)) + geom_point() +
-  facet_wrap(~genus) + geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d() 
-  #+ geom_smooth(method = lm, se = TRUE)
+#visualize outliers of flowers or leaves vs temperatures and save figure
+flow_leaf_outliers_plot <- ds3 %>% 
+  ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier)) + geom_point() + ggtitle(paste(focal_genus, focal_species)) +
+  geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d(name = "data quality")+ 
+  xlab("peak leaf out (day of year)") + ylab("peak flowering (day of year)") 
+flow_leaf_outliers_plot_fig_title <- (paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
+                                             focal_genus, "_", focal_species, ".jpg"))
+ggsave(flow_leaf_outliers_plot_fig_title, flow_leaf_outliers_plot)
 
-ds3 %>%  # filter(weights_leaf > .8) %>%   filter(weights_flow > .8) %>% 
-  ggplot(aes(x = dif_leaf_flow, color = fl_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
+# #CDF visualization
+# ds3 %>%  # filter(weights_leaf > .8) %>%   filter(weights_flow > .8) %>% 
+#   ggplot(aes(x = dif_leaf_flow, color = temp_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
 
 #extract statistics
 ds4 <- ds3 %>% 
   filter(weights_leaf > weight_cutoff_param) %>% 
   filter(weights_flow > weight_cutoff_param) 
 
-fit <- lm(dif_leaf_flow ~ leaf_mean 
+focal_fit <- lm(dif_leaf_flow ~ leaf_mean 
           + t_month_1 + t_month_2 + t_month_3 + t_month_4 +  elevation_in_meters + latitude 
           , data = ds4)
-summary(fit)
+summary(focal_fit)
 
-# quantile(fit$residuals, probs = c(.10, .25, .75, .90))
-# quantile(fit$fitted.values, probs = c(.10, .25, .75, .90))
+# quantile(focal_fit$residuals, probs = c(.10, .25, .75, .90))
+# quantile(focal_fit$fitted.values, probs = c(.10, .25, .75, .90))
 
-flow_dif_preds <- predict.lm(object = fit, newdata = ds4, interval = "prediction", level = 0.382924,
+flow_dif_preds <- predict.lm(object = focal_fit, newdata = ds4, interval = "prediction", level = 0.95,
                              se.fit = TRUE)
   
 ds5 <- ds4 %>% mutate(
@@ -615,9 +631,6 @@ ggplot(ds5, aes(x =  leaf_mean, y = flow_mean )) + geom_point() + geom_abline(sl
                       ymax = leaf_mean - pred_dif_leaf_flow_upr), col = "red", alpha = 0.3)
 
 
-flow_dif_preds$fit[,3] - flow_dif_preds$fit[,2]
-
-flow_dif_preds$residual.scale * flow_dif_preds$se.fit
 
 #### creating a prediction for an NYC tree in 2024 ------------------------------------------------------
 ## extract temperature data for that tree
@@ -631,8 +644,11 @@ nyc_coords <- data.frame(longitude = -73.97, latitude = 40.78) %>%
 #extract temperature for nyc for that year in those months
 t_mean_nyc_months <- as.vector(raster::extract(x = tmean_rast_d, y = nyc_coords))
 
+#get leaf_mean median for nyc in 2024 for focal species
+leaf_median_nyc2024 <- as.numeric(nyc_sos_summary %>% filter(species == paste(focal_genus, focal_species)) %>% dplyr::select(med_sos))
+  
 #fields required for prediction
-nyc_example_tree_pred_data <- data.frame(leaf_mean = 130, #temporary placeholder
+nyc_example_tree_pred_data <- data.frame(leaf_mean = leaf_median_nyc2024, #temporary placeholder
                                     t_month_1 = t_mean_nyc_months[1],
                                     t_month_2 = t_mean_nyc_months[2],
                                     t_month_3 = t_mean_nyc_months[3],
@@ -640,86 +656,48 @@ nyc_example_tree_pred_data <- data.frame(leaf_mean = 130, #temporary placeholder
                                     elevation_in_meters = 30, 
                                     latitude = 40.78)
 
-
+#create prediction
+flow_dif_preds_nyc <- predict.lm(object = focal_fit, newdata = nyc_example_tree_pred_data, interval = "prediction", level = 0.5,
+                                 se.fit = TRUE)
 
 ### creating main text table
-table_lf <- data.frame(genus = focal_genus, species = focal_species, nobs = nrow(ds5), 
+table_lf_focal <- data.frame(genus = focal_genus, species = focal_species, nobs = nrow(ds5), 
                        lf_dif_global_emp_mean = round(mean(ds5$dif_leaf_flow), 3),
-                       lf_dif_gloab_emp_sd = round(sd(ds5$dif_leaf_flow), 3),
-                       lf_dif_pred_nyc_2024_mean = flow_dif_preds_nyc$fit[1],
-                       lf_dif_pred_nyc_2024_se = flow_dif_preds_nyc$se.fit)
-
+                       lf_dif_gloab_emp_p25 = round(quantile(ds5$dif_leaf_flow, 0.25), 3),
+                       lf_dif_gloab_emp_p75 = round(quantile(ds5$dif_leaf_flow, 0.75), 3),
+                       lf_dif_pred_nyc_2024_mean = round(flow_dif_preds_nyc$fit[1], 2),
+                       lf_dif_pred_nyc_2024_p25 = round(flow_dif_preds_nyc$fit[,2], 2), 
+                       lf_dif_pred_nyc_2024_p75 = round(flow_dif_preds_nyc$fit[,3], 2))
+table_lf_all_list[[focal_sp_i]] <- table_lf_focal
 
 ### creating SI table
+table_si_start_focal <- data.frame(
+  genus = focal_genus, 
+  species = focal_species, 
+  nobs = nrow(ds5),
+  outliers_leaf_n = length(ds3$temp_outlier[ds3$temp_outlier == "leaf outlier"]),
+  outliers_flow_n = length(ds3$temp_outlier[ds3$temp_outlier == "flower outlier"])
+  )
+
+tidy_focal_fit <- broom::tidy(focal_fit) %>% 
+  mutate(est_se = paste0(round(estimate, 3), " (", round(std.error, 3), ")")) %>% 
+  dplyr::select(term, est_se) %>% 
+  mutate(term = case_when(term == "(Intercept)" ~ "intercept", 
+                          .default = term)) %>% 
+  pivot_wider(., names_from = term, values_from = est_se)
+
+table_si_focal <- bind_cols(table_si_start_focal, tidy_focal_fit)
+
+table_si_all_list[[focal_sp_i]] <- table_si_focal
+}#end species loop
+
+
+#combine individual rows from each species into a single dataframe
+table_si_all <- bind_rows(table_si_all_list)
+table_lf_all <- bind_rows(table_lf_all_list)
 
 
 
-
-
-
-
-
-
-
-
-
-
-### creating predictions for the proportion of flowering on each particular day using results from prediction ##################
-
-#range of dif_leaf_flow to predict over
-#NEEDS TO BE EXPANDED TO INCLUDE PREDICTIONS
-pred_range_dif_leaf_flow <- round(min(ds4$dif_leaf_flow)) : round(max(ds4$dif_leaf_flow))
-
-
-#create flowering predictions for all trees of a sp based on predicted dif_leaf_flow
-tree_all <- list() #should probably turn this into a function instead of a loop
-for(i in 1:nrow(ds5)){
-tree_i_preds <- data.frame( 
-  pred_range_dif_leaf_flow = pred_range_dif_leaf_flow,
-  rel_flow_day = dnorm(pred_range_dif_leaf_flow, mean = flow_dif_preds$fit[i,1], sd = flow_dif_preds$se.fit[i]))
-  
-tree_i_vars <- ds5 %>%  slice(i) %>% 
-  select(genus, species, individual_id, year_obs, leaf_mean) %>% 
-  slice(rep(1, nrow(tree_i_preds))) 
-
-tree_i <- bind_cols(tree_i_vars, tree_i_preds)
-tree_all <- bind_rows(tree_all, tree_i)
-}
-
-
-#checking to see how it went across all trees
-test <- tree_all %>% 
-  mutate(pred_day = round(leaf_mean) + pred_range_dif_leaf_flow) %>% 
-  group_by(year_obs, pred_day) %>% 
-  summarize(day_total = sum(rel_flow_day))
-
-#%>% ggplot(aes(x = pred_day, y = day_total)) + geom_point() + facet_wrap(~year_obs)
-
-
-
-
-#some messing around as I think about how to effectively predict the probability of peak flowering being on each day
-
-test <- data.frame(level = seq(0, 0.99, by = 0.01), fit = rep(NA, 100), lwr = rep(NA, 100), upr = rep(NA,100))
-
-for(i in 1:100){
-flow_dif_preds_nyc <- predict.lm(object = fit, newdata = nyc_example_tree_pred_data, interval = "prediction", level = test$level[i],
-                             se.fit = TRUE)
-
-test$fit[i] <- flow_dif_preds_nyc$fit[,1] 
-test$lwr[i] <- flow_dif_preds_nyc$fit[,2]
-test$upr[i] <- flow_dif_preds_nyc$fit[,3]
-}
-
-test %>% mutate( full = upr - lwr,
-                 difup = upr - fit,
-                 difdown = fit - lwr) %>% 
-  ggplot(aes(x = level, y = full)) + geom_point()
-
-plot(test2, test)
-test2<-  seq(0, 0.98, by = 0.01)
-
-test3 <- data.frame(test2, test)
 
 
 
