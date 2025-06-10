@@ -109,14 +109,13 @@ npn_direct <- left_join(npn_direct, obs_per_observer)
 #   filter(phenophase_id == 467) %>% 
 #   ggplot(aes(x = ymd(observation_date), y = intensity_p, color = phenophase_description)) + geom_point()
 
-
 #take the average date of leaf expansion for each individual tree in each year
 indiv_leafout <- npn_direct %>% filter(phenophase_id == 467) %>% 
   filter(phenophase_status == 1) %>% 
   filter(day_of_year < 173) %>%  #solstice
   group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
   slice(which.min(abs(intensity_p - 0.5))) %>% 
-  filter(intensity_p > 0.2 & intensity_p < 0.8)
+  filter(intensity_p > 0.2 & intensity_p < 0.8) #test <- npn_direct %>% filter( genus == "Platanus")
 
 indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
   filter(phenophase_status == 1) %>% 
@@ -181,7 +180,8 @@ indiv_pol_release <- npn_direct %>% filter(phenophase_id == 502) %>%
 
 ###extract temperature data for each location in each year ####################
 prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
-#get_prism_monthlys(years = 2024:2025, type = "tmean") #updating my local dataset
+#get_prism_monthlys(years = 2025:2025, type = "tmean") #updating my local dataset
+#prism_archive_clean(type = "tmean", temp_period = "monthly", years = 2012:2025) #needed to clean out some provisional data
 #get_prism_dailys(minDate = ymd("2025-05-01"), maxDate = ymd("2025-05-05"), type = "tmean") #updating my local dataset
 
 
@@ -540,7 +540,7 @@ table_lf_all_list <- list()
 table_si_all_list <- list()
 
 #start species loop
-for(focal_sp_i in 44:44){
+for(focal_sp_i in 2:2){
   
 #inputs for loop
   
@@ -594,8 +594,8 @@ flow_leaf_outliers_plot <- ds3 %>%
   ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier)) + geom_point() + ggtitle(paste(focal_genus, focal_species)) +
   geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d(name = "data quality")+ 
   xlab("peak leaf out (day of year)") + ylab("peak flowering (day of year)") 
-flow_leaf_outliers_plot_fig_title <- (paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
-                                             focal_genus, "_", focal_species, ".jpg"))
+flow_leaf_outliers_plot_fig_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
+                                             focal_genus, "_", focal_species, ".jpg")
 ggsave(flow_leaf_outliers_plot_fig_title, flow_leaf_outliers_plot)
 
 # #CDF visualization
@@ -611,6 +611,10 @@ focal_fit <- lm(dif_leaf_flow ~ leaf_mean
           + t_month_1 + t_month_2 + t_month_3 + t_month_4 +  elevation_in_meters + latitude 
           , data = ds4)
 summary(focal_fit)
+
+  ## save the species model for use in the NYC_tree_flow.R script
+    write_rds(focal_fit, paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "NPN_model_",
+                                 focal_genus, "_", focal_species, ".rds"))
 
 # quantile(focal_fit$residuals, probs = c(.10, .25, .75, .90))
 # quantile(focal_fit$fitted.values, probs = c(.10, .25, .75, .90))
@@ -694,7 +698,7 @@ table_si_all_list[[focal_sp_i]] <- table_si_focal
 
 #combine individual rows from each species into a single dataframe
 table_si_all <- bind_rows(table_si_all_list)
-table_lf_all <- bind_rows(table_lf_all_list)
+table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
 
 
 
