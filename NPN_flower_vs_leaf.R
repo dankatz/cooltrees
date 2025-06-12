@@ -1,4 +1,4 @@
-#This script is for 
+#This script is for calculting the relationships between leafout and flowering from NPN data
 
 library(rnpn)
 library(dplyr)
@@ -197,40 +197,40 @@ lf_extract <- lf %>% ungroup() %>%
 
 
 ### function to extract temperature for days around flowering/leaf out
-extract_temp_daily <- function(individual_id, year_obs, flow_mean, leaf_mean, longitude, latitude){ 
-  individual_id_focal <- individual_id
-  longitude_focal <- longitude
-  latitude_focal <- latitude
-  yr_focal <- year_obs
-  #year_obs <- lf_sf$year_obs[1]; flow_mean <- lf_sf$flow_mean; leaf_mean <- lf_sf$leaf_mean[1]; individual_id_focal <- lf_sf$individual_id[1]
-  date_min_doy <- max(flow_mean) - 30 #can substitute in flowering or leaf or the max of both here
-  date_max_doy <- max(flow_mean)
-  date_min <- ymd(paste0(yr_focal, "/1/1")) + date_min_doy
-  date_max <- ymd(paste0(yr_focal, "/1/1")) + date_max_doy
-  
-  #print(date_min); print(date_max)
-  tmean_rast_d <- prism_archive_subset(temp_period = "daily", type = "tmean", minDate = date_min, maxDate = date_max)
-  tmean_rast2_d <- pd_stack(tmean_rast_d)
-  r_mean <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-  
-  lf_sub <- filter(lf_extract, year_obs == yr_focal, individual_id == individual_id_focal) 
-  #print(lf_sub)
-  lf_sub_sf <- lf_sub %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
-  
-  tmean_data <- unlist(raster::extract(x = r_mean,
-                                       y = lf_sub_sf)) %>% as.data.frame()
-
-  lf_sub2 <- lf_sub %>% mutate(tmean = as.numeric(unlist(tmean_data)))
-
-  print(tmean_data)
-  return(lf_sub2)
-}
-
-#apply function to calculate temp for each observation individually
-#lf_test <- lf_extract[20:21,]
-spring_temp <- purrr::pmap_dfr(.l = lf_extract, .f = extract_temp_daily)
-
-npn_active_flow <- left_join(npn_active_flow, spring_temp)
+# extract_temp_daily <- function(individual_id, year_obs, flow_mean, leaf_mean, longitude, latitude){ 
+#   individual_id_focal <- individual_id
+#   longitude_focal <- longitude
+#   latitude_focal <- latitude
+#   yr_focal <- year_obs
+#   #year_obs <- lf_sf$year_obs[1]; flow_mean <- lf_sf$flow_mean; leaf_mean <- lf_sf$leaf_mean[1]; individual_id_focal <- lf_sf$individual_id[1]
+#   date_min_doy <- max(flow_mean) - 30 #can substitute in flowering or leaf or the max of both here
+#   date_max_doy <- max(flow_mean)
+#   date_min <- ymd(paste0(yr_focal, "/1/1")) + date_min_doy
+#   date_max <- ymd(paste0(yr_focal, "/1/1")) + date_max_doy
+#   
+#   #print(date_min); print(date_max)
+#   tmean_rast_d <- prism_archive_subset(temp_period = "daily", type = "tmean", minDate = date_min, maxDate = date_max)
+#   tmean_rast2_d <- pd_stack(tmean_rast_d)
+#   r_mean <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+#   
+#   lf_sub <- filter(lf_extract, year_obs == yr_focal, individual_id == individual_id_focal) 
+#   #print(lf_sub)
+#   lf_sub_sf <- lf_sub %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+#   
+#   tmean_data <- unlist(raster::extract(x = r_mean,
+#                                        y = lf_sub_sf)) %>% as.data.frame()
+# 
+#   lf_sub2 <- lf_sub %>% mutate(tmean = as.numeric(unlist(tmean_data)))
+# 
+#   print(tmean_data)
+#   return(lf_sub2)
+# }
+# 
+# #apply function to calculate temp for each observation individually
+# #lf_test <- lf_extract[20:21,]
+# spring_temp <- purrr::pmap_dfr(.l = lf_extract, .f = extract_temp_daily)
+# 
+# npn_active_flow <- left_join(npn_active_flow, spring_temp)
 
 
 
@@ -530,8 +530,15 @@ indiv_flow_t <- indiv_flow_t %>% rowwise() %>%
 
 
 ### analyze the difference between leafout and flowering for each species and create tables and figures ################
-npn_species_to_analyze <- lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) #%>% print(n = 80)
-
+npn_species_to_analyze <- lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% #print(n = 80)
+  filter(!(genus == "Quercus" & species == "douglasii"), #not an east coast species
+         !(genus == "Betula" & species == "nana"),  #not an east coast species 
+         !(genus == "Quercus" & species == "lobata"),  #not an east coast species 
+         !(genus == "Quercus" & species == "kelloggii"),  #not an east coast species
+         !(genus == "Populus" & species == "fremontii"),  #not an east coast species
+         !(genus == "Celtis" & species == "occidentalis"),  #too few observations
+         !(genus == "Salix" & species == "bebbiana"),  #too few observations
+         !(genus == "Acer" & species == "circinatum")) #not an east coast species
 #loading in the nyc data to get median leafout date per species for nyc in 2024 for table 1
 nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
 
@@ -540,12 +547,13 @@ table_lf_all_list <- list()
 table_si_all_list <- list()
 
 #start species loop
-for(focal_sp_i in 2:2){
-  
+for(focal_sp_i in 1:36){
+
 #inputs for loop
   
   focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
   focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
+  print(paste(focal_genus, focal_species))
   weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
 
 
@@ -698,8 +706,10 @@ table_si_all_list[[focal_sp_i]] <- table_si_focal
 
 #combine individual rows from each species into a single dataframe
 table_si_all <- bind_rows(table_si_all_list)
-table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
+write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250611.csv")
 
+table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
+write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250611.csv")
 
 
 

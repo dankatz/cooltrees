@@ -7,6 +7,7 @@ library(lubridate)
 library(ggplot2)
 library(readr)
 library(sf)
+library(prism)
 library(ggspatial)
 library(terra)
 library(tidyterra)
@@ -43,7 +44,7 @@ nyc_sos_percentile_sp_yr <- nyc_sos %>%
               p25_sos = quantile(SOS_50, 0.25),
               p75_sos = quantile(SOS_50, 0.75),
               ntrees = n())
-  write_csv(nyc_sos_summary, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
+  #write_csv(nyc_sos_summary, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
 
 
 
@@ -66,18 +67,18 @@ nyc_sos_percentile_sp_yr <- nyc_sos %>%
 
 
 #start species loop
-for(focal_sp_i in 2:2){
+for(focal_sp_i in 1:1){
   
   #inputs for loop
-  focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
-  focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
+  focal_genus <- "Betula" #npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
+  focal_species <- "papyrifera" #npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
 
   ### load in season start date for each individual tree that we have sos estimated for
   nyc_sos_focal_sp_raw <- filter(nyc_sos, species == paste(focal_genus, focal_species))
   
   ### filtering out records where sos is questionable
   nyc_sos_focal_sp <- nyc_sos_focal_sp_raw %>% 
-    filter(R2 > 0.8 & dbh > 3.9) %>% 
+    filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
     filter(n_SOS_50_7day > 0) %>% #removing trees that didn't have at least one image within a week of sos50
     mutate(leaf_mean = SOS_50,  #to match the naming of the NPN model
            latitude = Lat) %>% 
@@ -149,7 +150,7 @@ for(focal_sp_i in 2:2){
       pred_levels <- seq(0, 0.99, by = 0.01)
       
       for(j in 1:100){
-        flow_dif_preds_nyc_j <- predict.lm(object = fit, newdata = nyc_sos_focal_sp_sub, interval = "prediction", level = pred_levels[j],
+        flow_dif_preds_nyc_j <- predict.lm(object = npn_fit, newdata = nyc_sos_focal_sp_sub, interval = "prediction", level = pred_levels[j],
                                            se.fit = TRUE)
         flow_dif_preds_nyc_list_j[[j]] <-
           nyc_sos_focal_sp_sub %>% 
@@ -178,11 +179,10 @@ for(focal_sp_i in 2:2){
       flow_dif_preds_nyc_v3 <- flow_dif_preds_nyc_v2 %>% 
         group_by(Point_ID, Year) %>% 
         mutate(difup_num = (difup_num * -1) - 1) %>% 
-        #   filter(difup_num != 0) %>% 
         bind_rows(., flow_dif_preds_nyc_v2) %>% 
         arrange(Point_ID, Year, difup_num) %>% 
         mutate(dif_lf_day = round(fit) + difup_num,
-               doy = leaf_mean + dif_lf_day) %>% 
+               doy = leaf_mean - dif_lf_day) %>% 
         select(Point_ID, species, Year, doy, leaf_mean, dif_lf_day, prop_in_day) %>% 
         mutate(obs_date = as.Date(doy - 1, paste0(Year, "-01-01")))
       
@@ -211,7 +211,7 @@ for(focal_sp_i in 2:2){
         mutate(prop_in_day = case_when(is.na(prop_in_day) ~ 0, .default = prop_in_day),
                prop_in_day_n = case_when(is.na(prop_in_day_n) ~ 0, .default = prop_in_day_n))
       
-
+      
       
 ### summary figures for predicted flowering for each season #####################################      
       # filter(flow_dif_preds_nyc_v3) %>% 
@@ -227,12 +227,17 @@ for(focal_sp_i in 2:2){
       #   #ggplot(aes(x = doy, y = Point_ID)) + geom_point() + facet_wrap(~Year)
       # ggplot(aes(x = doy, y = prop_in_day)) + geom_point() + facet_wrap(~Year)
       
-     flow_dif_preds_nyc_v3 %>% 
+  plot_interannual_timing <- 
+        flow_dif_preds_nyc_v3 %>% 
         group_by(doy, Year) %>% 
         summarize(sum_day = sum(prop_in_day_n)) %>% 
         ggplot(aes(x = (doy + mdy("01-01-2024")), y = sum_day, color = as.factor(Year))) + geom_line() + theme_bw() + 
-       scale_x_date(name = "date") + ylab("predicted peak flowering (proportion)") + scale_color_viridis_d(name = "Year")
-
+       scale_x_date(name = "date") + ylab("predicted peak flowering (proportion)") + scale_color_viridis_d(name = "Year") +
+        ggtitle((paste(focal_genus, focal_species)))
+    plot_interannual_timing
+    ggsave(plot_interannual_timing, filename = paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_maps/",
+                  focal_genus,"/", focal_species, "/plot_flowering_interannual_timing.png"))
+      
      
 ### maps of flowering of individual trees for each species on each day ##########################
   #load in nyc boundary polygon
@@ -255,6 +260,12 @@ for(focal_sp_i in 2:2){
       output_directory <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_maps/",
                                 focal_genus,"/", focal_species, "/")
  
+  #what days should be included?
+      doy_min_sp <- as.numeric(quantile(flow_dif_preds_nyc_v3$doy, 0.025) )
+      doy_max_sp <- as.numeric(quantile(flow_dif_preds_nyc_v3$doy, 0.975) ) #min(nyc_sos_focal_sp$SOS_p97.5) 
+      
+      
+      
   #start loop for creating frames
   for(focal_year_i in 2017:2024){
     
@@ -263,7 +274,7 @@ for(focal_sp_i in 2:2){
     if(!dir.exists(output_directory_year)){dir.create(path = output_directory_year, recursive = TRUE)}
     
      #start the day loop
-    for(focal_doy_i in 100:140){
+    for(focal_doy_i in doy_min_sp:doy_max_sp){
   
      flow_dif_preds_nyc_v3_sf_frame <- flow_dif_preds_nyc_v3_sf %>% 
      filter(Year == focal_year_i) %>% 
@@ -300,16 +311,52 @@ for(focal_sp_i in 2:2){
 
   } ## end loop for creating map of that day 
     
-    ### create gifs from the individual frames ==================
+    ### create gifs from the individual frames
     #list of png files in directory
     gif_file_list <- list.files(path = output_directory_year, full.names = TRUE)
     gifski(gif_file_list, gif_file = paste0(output_directory, "animation_", focal_year_i,".gif"), delay = 0.5)
     
-    
   } ## end loop for year
 
-
-  
+  #### map of peak flowering time for each species in a year 
+      flow_dif_preds_nyc_peak_date <-
+        flow_dif_preds_nyc_v3 %>% 
+        group_by(Point_ID, Year) %>% 
+        slice_max(prop_in_day_n) %>% 
+        summarize(obs_date2 = mean(obs_date),
+                  doy2 = mean(doy))
+      
+      flow_dif_preds_nyc_peak_date_sf <- 
+        nyc_sos_focal_sp %>% 
+        dplyr::select(Point_ID, species, Lon, Lat) %>% 
+        distinct() %>% #remove same tree from multiple years
+        left_join(flow_dif_preds_nyc_peak_date, .) %>% 
+        st_as_sf(coords = c( "Lon", "Lat"), crs = 4326)
+      
+      
+      # aggregate daily flowering points to raster
+      flow_dif_preds_nyc_v3_terra <- terra::vect(flow_dif_preds_nyc_peak_date_sf)
+      nyc_grid <- rast(ext(flow_dif_preds_nyc_v3_terra), resolution = 0.03, crs = crs(flow_dif_preds_nyc_v3_terra))
+      flow_peak_rast <- terra::rasterize(flow_dif_preds_nyc_v3_terra, nyc_grid, field = "doy2", fun = "mean", background = NA)
+      
+      
+      #create map
+      map_max <- 
+        ggplot() + ggthemes::theme_few() +   
+        theme(panel.background = element_rect(fill='gray94', color = NA)) + 
+          geom_spatraster(data = flow_peak_rast) + 
+             scale_fill_distiller(palette = "Spectral", na.value = "gray94", name = "peak flowering (day)") +
+          geom_sf(data = nyc_boundary_invert, fill = "gray94", color = "gray94") +  #
+          geom_sf(data = nyc_boundary, fill = NA, color = "black") +
+        geom_sf(data = flow_dif_preds_nyc_peak_date_sf, color = "gray", size = 0.5, alpha = 0.25) + 
+          annotation_scale(location = "br")   # annotation_north_arrow(location = "tl") 
+       
+      map_max_title <- paste0(output_directory,
+                                "/map_max_", focal_genus,"_", focal_species, "_", focal_year, ".png")
+      
+      ggsave(filename = map_max_title, plot = map_max, units = "px", width = 3000, height = 2000)
+      
+      
 } ### end species loop
 
 
@@ -318,120 +365,3 @@ for(focal_sp_i in 2:2){
 
 
  
-#### old stuff ########################
-
- 
- 
- 
- 
- 
- 
- 
- 
- 
- #################################
-
-#range of dif_leaf_flow to predict over
-#NEEDS TO BE EXPANDED TO INCLUDE PREDICTIONS
-pred_range_dif_leaf_flow <- round(min(ds4$dif_leaf_flow)) : round(max(ds4$dif_leaf_flow))
-
-
-#create flowering predictions for all trees of a sp based on predicted dif_leaf_flow
-tree_all <- list() #should probably turn this into a function instead of a loop
-for(i in 1:nrow(ds5)){
-  tree_i_preds <- data.frame( 
-    pred_range_dif_leaf_flow = pred_range_dif_leaf_flow,
-    rel_flow_day = dnorm(pred_range_dif_leaf_flow, mean = flow_dif_preds$fit[i,1], sd = flow_dif_preds$se.fit[i]))
-  
-  tree_i_vars <- ds5 %>%  slice(i) %>% 
-    select(genus, species, individual_id, year_obs, leaf_mean) %>% 
-    slice(rep(1, nrow(tree_i_preds))) 
-  
-  tree_i <- bind_cols(tree_i_vars, tree_i_preds)
-  tree_all <- bind_rows(tree_all, tree_i)
-}
-
-
-#checking to see how it went across all trees
-test <- tree_all %>% 
-  mutate(pred_day = round(leaf_mean) + pred_range_dif_leaf_flow) %>% 
-  group_by(year_obs, pred_day) %>% 
-  summarize(day_total = sum(rel_flow_day))
-
-#%>% ggplot(aes(x = pred_day, y = day_total)) + geom_point() + facet_wrap(~year_obs)
-
-
-
-
-#some messing around as I think about how to effectively predict the probability of peak flowering being on each day
-
-test <- data.frame(level = seq(0, 0.99, by = 0.01), fit = rep(NA, 100), lwr = rep(NA, 100), upr = rep(NA,100))
-
-for(i in 1:100){
-  flow_dif_preds_nyc <- predict.lm(object = fit, newdata = nyc_example_tree_pred_data, interval = "prediction", level = test$level[i],
-                                   se.fit = TRUE)
-  
-  test$fit[i] <- flow_dif_preds_nyc$fit[,1] 
-  test$lwr[i] <- flow_dif_preds_nyc$fit[,2]
-  test$upr[i] <- flow_dif_preds_nyc$fit[,3]
-}
-
-#function to find the rows that correspond to the cutoff for each day
-day_cutoff_fun <- function(x){
-  x %>% which.
-  }
-
-
-
-
-
-test2 <- test %>% mutate( fit_r = round(fit),
-                 full = upr - lwr,
-                 difup = upr - fit,
-                 difdown = fit - lwr) 
-
-test2 %>% mutate(diff = abs(7 - difup)) %>%
-  slice_min(diff, n = 1) %>% 
-  mutate(up_level = level * 0.5)
-  
-
-
-# Continuous vector
-v <- c(0.3, 1.6, 2.1, 2.8, 3.5, 4.9, 5.2, 5.9)
-
-# Target integers
-target_ints <- floor(1):ceiling(max(test2$difup))
-
-# Find closest value in `v` to each integer
-closest_vals <- map_dbl(target_ints, function(x) v[which.min(abs(v - x))])
-
-# Combine results
-tibble(
-  target = target_ints,
-  closest_value = closest_vals
-)
-
-
-
-
-
-
-#%>%   ggplot(aes(x = level, y = difup)) + geom_point()
-
-plot(test2, test)
-test2<-  seq(0, 0.98, by = 0.01)
-
-test3 <- data.frame(test2, test)
-
-
-
-
-test3 <- test2 %>% 
-  mutate(difup_char = as.character(trunc(difup))) %>% 
-  group_by(difup_char) %>% 
-  slice_max( difup) %>% 
-  ungroup() %>% 
-  mutate(level_up = level/2,
-         prop_in_day_raw = level_up - lag(level_up, n = 1),
-         prop_in_day = case_when(is.na(prop_in_day_raw) ~ level_up, .default = prop_in_day_raw))
-
