@@ -2,17 +2,17 @@
 # and from additional data collected by DK 
 
 # set up work environment
-library(rnpn)
-library(dplyr)
-library(tidyr)
-library(lubridate)
-library(ggplot2)
-library(readr)
-library(prism)
-library(sf)
-library(purrr)
-library(broom)
-library(robustbase)
+  library(rnpn)
+  library(dplyr)
+  library(tidyr)
+  library(lubridate)
+  library(ggplot2)
+  library(readr)
+  library(prism)
+  library(sf)
+  library(purrr)
+  library(broom)
+  library(robustbase)
 
 
 ### select top anemophilous taxa from NPN #####################################
@@ -178,8 +178,95 @@ library(robustbase)
             #   group_by(pol_dif) %>% 
             #   summarize(nobs = n())
 
-
-###extract temperature data for each location in each year ####################
+### process non-NPN data from DK and other sources #############################
+   #open data from Detroit in 2017
+    #this is from the script: "C:\Users\dsk273\Box\MIpostdoc\trees\Phenology and daily variation in pollen release\parsing_pheno_measurements.R" 
+    #documentation is available: "phenology and relative release SOP 170626.docx" in the same folder
+     phenotree <- readr::read_csv("C:/Users/dsk273/Box/MIpostdoc/trees/Phenology and daily variation in pollen release/phenotree250418.csv") %>% 
+       st_as_sf(coords = c( "POINT_X", "POINT_Y"), crs = 3857) %>% #turns out the field collected data were in WGS84 Web Mercator
+       st_transform(., 4326) %>% 
+       mutate(longitude = sf::st_coordinates(.)[,1],
+              latitude = sf::st_coordinates(.)[,2]) %>% 
+       mutate(year_obs = 2017,
+              genus = stringr::word(Species, 1),
+              species = stringr::word(Species, 2),
+              species = case_when(genus == "Platanus" & species == "x" ~ "acerifolia", .default = species),
+              elevation_in_meters = 200) %>% # actual elevation of sites was all within ~25 m of this
+      st_drop_geometry() %>% 
+      filter(!(pheno_ID == "76d7b4e0-e525-439c-a03d-9be53b3968b3" & created_date == "4/21/2017 19:37")) %>% 
+      filter(!(pheno_ID == "8040fab7-2224-4c6e-8b47-356df9b13605" & created_date == "4/28/2017 18:01"))
+      
+     #phenotree_sf$lon; phenotree_sf$lat; plot(phenotree_sf[,1])  #checks
+        #test <- phenotree %>% filter(Species == "Platanus x acerfolia") %>% arrange( tree, date)
+    
+    # #add in additional observations of Platanus acerifolia from DK from several years based on photos
+    #   phenotree_additional_obs <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/manual Plac observations from DK 250613.csv") %>% 
+    #     mutate( date = mdy(date),
+    #             julia = yday(date),
+    #             year_obs = year(date))
+      # 
+      # phenotree <- bind_rows(phenotree, phenotree_additional_obs)
+    
+     ## extract monthly spring temperature in each year, one year at a time
+         t_data_all_years_list <- list()
+         t_data_all_years_months <- phenotree
+         yr_list <- unique(phenotree$year_obs)
+         for(j in 1:4){ #start month loop
+           for(i in 1:length(yr_list)){ #start year loop
+             #create a raster of mean spring temperature for a particular year
+             tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+             tmean_rast2_d <- pd_stack(tmean_rast_d)
+             tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+             
+             #convert the points to extract to sf
+             l_yr <- phenotree %>% filter(year_obs == yr_list[i])
+             l_yr_sf <- phenotree %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+             
+             #extract temperature for all points in that year
+              t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+               raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+             
+             #combine results into a list
+             t_data_all_years_list[[i]] <- t_data_focal_year
+           } #end year loop
+           
+           #merge all the years together
+           t_data_all_years_month <- bind_rows(t_data_all_years_list)
+           
+           #join the different months
+           t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
+         } #end month loop
+     
+     
+     #join back into the parent dataset
+         phenotree <- left_join(phenotree, t_data_all_years_months) #names(phenotree)
+    
+     #calculate the day of peak leaf expansion ("Stage D") for each tree
+       #"Stage D: leaves partly expanded" vs. "Stage C: new shoots emerging" vs. "Stage E: leaves fully expanded"
+      d_leafmax <- phenotree %>%
+        group_by(genus, species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
+        slice_max(leaf_d) %>% 
+        summarize(date_mean = mean(date), #taking the middle date if there are multiple
+                  leaf_mean = mean(julia),
+                  intensity = mean(leaf_d)/100)%>% 
+        ungroup() %>% 
+        filter(intensity > 0.25) #remove the one tree where peak leaf expansion wasn't observed
+    
+    # calculate the day of peak mature flowers ("stage Y") for each tree
+    # "Stage y: flowers fully developed" vs. "Stage x: immature inflorescence visible" vs. "Stage z: flowers senescent"
+      d_flowmax <- phenotree %>%
+        group_by(genus, species, Species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
+        slice_max(flower_y) %>% 
+        summarize(date_mean = mean(date),
+                  flow_mean = mean(julia),
+                  intensity = mean(flower_y)/100) %>% 
+        filter(!(Species == "Platanus x acerfolia" & intensity < 0.01)) %>% 
+        filter(!(Species != "Platanus x acerfolia" & intensity < 0.25))%>% 
+        ungroup()
+    
+    
+      
+### extract temperature data for each location in each year ####################
   prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
   # get_prism_monthlys(years = 2025:2025, type = "tmean") #updating my local dataset
   # prism_archive_clean(type = "tmean", temp_period = "monthly", years = 2012:2025) #needed to clean out some provisional data
@@ -189,8 +276,8 @@ library(robustbase)
   ## prepare data to extract
     lf_extract <- lf %>% ungroup() %>% 
       mutate(year_obs = year(observation_date),
-             too_recent = case_when(year_obs == 2025 & flow_mean > 180 ~ "too recent",
-                                    year_obs == 2025 & leaf_mean > 180 ~ "too recent",
+             too_recent = case_when(year_obs == 2025 & flow_mean > 150 ~ "too recent", #currently set to include through may 2025
+                                    year_obs == 2025 & leaf_mean > 150 ~ "too recent",
                                     TRUE ~ "not too recent")) %>% 
       filter(too_recent == "not too recent") %>% #removing observations from this month
       dplyr::select(individual_id, longitude, latitude, year_obs, flow_mean, leaf_mean) %>% 
@@ -239,21 +326,21 @@ library(robustbase)
     tmean_data_all_years_list <- list()
     yr_list <- 2012:2025
     for(i in 1:length(yr_list)){
-    #create a raster of mean spring temperature for a particular year
-      tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = c(1,4), years = yr_list[i])
-      tmean_rast2_d <- pd_stack(tmean_rast_d)
-      tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-    
-    #convert the points to extract to sf
-      lf_yr <- lf_extract %>% filter(year_obs == yr_list[i])
-      lf_yr_sf <- lf_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+      #create a raster of mean spring temperature for a particular year
+        tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = c(1, 2, 3, 4), years = yr_list[i])
+        tmean_rast2_d <- pd_stack(tmean_rast_d)
+        tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
       
-    #extract temperature for all points in that year
-      tmean_data_focal_year <- mutate(lf_yr, tmean_spring = unlist(
-          raster::extract(x = tmean_focal_year, y = lf_yr_sf)))
-      
-    #combine results into a list
-      tmean_data_all_years_list[[i]] <- tmean_data_focal_year
+      #convert the points to extract to sf
+        lf_yr <- lf_extract %>% filter(year_obs == yr_list[i])
+        lf_yr_sf <- lf_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+        
+      #extract temperature for all points in that year
+        tmean_data_focal_year <- mutate(lf_yr, tmean_spring = unlist(
+            raster::extract(x = tmean_focal_year, y = lf_yr_sf)))
+        
+      #combine results into a list
+        tmean_data_all_years_list[[i]] <- tmean_data_focal_year
     }
     
     #merge all the years together
@@ -267,8 +354,8 @@ library(robustbase)
     lfp <- left_join(lf, indiv_pol_release)
     
     
-    #write_csv(lfp, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250508.csv")
-    #lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250508.csv")
+    #write_csv(lfp, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250613.csv")
+    #lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250613.csv")
 
 
 
@@ -302,8 +389,7 @@ library(robustbase)
       filter(too_recent == "not too recent") %>% #removing observations from this month
       dplyr::select(genus, species, 
                     individual_id, n_obs_per_person, longitude, latitude, year_obs, 
-                    leaf_early, leaf_mean, leaf_late, leaf_nobs, leafout_duration, intensity_p,
-                    gdd, daylength
+                    leaf_early, leaf_mean, leaf_late, leaf_nobs, leafout_duration, intensity_p #gdd, daylength
                     ) %>% 
       ungroup()
     
@@ -312,99 +398,24 @@ library(robustbase)
     t_data_all_years_months <- indiv_leafout
     yr_list <- 2012:2025
     for(j in 1:4){ #start month loop
-    for(i in 1:length(yr_list)){ #start year loop
-      #create a raster of mean spring temperature for a particular year
-      tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
-      tmean_rast2_d <- pd_stack(tmean_rast_d)
-      tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-      
-      #convert the points to extract to sf
-      l_yr <- indiv_leafout %>% filter(year_obs == yr_list[i])
-      l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
-      
-      #extract temperature for all points in that year
-      t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
-                                  raster::extract(x = tmean_focal_year, y = l_yr_sf)))
-      
-      #combine results into a list
-      t_data_all_years_list[[i]] <- t_data_focal_year
-    }
+        for(i in 1:length(yr_list)){ #start year loop
+          #create a raster of mean spring temperature for a particular year
+          tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+          tmean_rast2_d <- pd_stack(tmean_rast_d)
+          tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+          
+          #convert the points to extract to sf
+          l_yr <- indiv_leafout %>% filter(year_obs == yr_list[i])
+          l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+          
+          #extract temperature for all points in that year
+          t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+                                      raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+          
+          #combine results into a list
+          t_data_all_years_list[[i]] <- t_data_focal_year
+        }
     
-    #merge all the years together
-    t_data_all_years_month <- bind_rows(t_data_all_years_list)
-    
-    #join the different months
-    t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
-    } #end month loop
-    
-    
-    #join back into the parent dataset
-    indiv_leafout_t <- left_join(indiv_leafout, t_data_all_years_months)
-    
-    #some derived variables
-    indiv_leafout_t <- indiv_leafout_t %>% rowwise() %>% 
-      mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
-
-
-
-### get temperature for indiv_flow for finding outliers ########################################################
-    #starting with the raw data and extracting relevant bits
-    indiv_flow_peak <- npn_direct %>% filter(phenophase_id == 501) %>% 
-      filter(phenophase_status == 1) %>% 
-      group_by(genus, species, individual_id, year_obs) %>% 
-      slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
-      filter(intensity_p > 0.2 ) #"what percentage of all fresh flowers on the plant are open?"
-    
-    indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
-      filter(phenophase_status == 1) %>% 
-      filter(intensity_p > 0.2 ) %>% 
-      group_by(genus, species, individual_id, year_obs) %>% 
-      summarize(flow_mean = mean(day_of_year),
-                flow_early = min(day_of_year),
-                flow_late = max(day_of_year),
-                flow_nobs = n()) %>% 
-      mutate(flow_duration = flow_late - flow_early) %>% 
-      ungroup()
-    
-    #filter out bad observations and prepare data to extract
-    indiv_flow <- left_join(indiv_flow_peak, indiv_flow_summary) %>% 
-      filter(n_obs_per_person > 10) %>% 
-      filter(flow_duration < 15) %>% 
-      #filter(flow_late < 173) %>%  #solstice
-      mutate(year_obs = year(observation_date),
-             too_recent = case_when(year_obs == 2025 & flow_mean > 120 ~ "too recent",
-                                    TRUE ~ "not too recent")) %>% 
-      filter(too_recent == "not too recent") %>% #removing observations from this month
-      dplyr::select(genus, species, 
-                    individual_id, n_obs_per_person, longitude, latitude, year_obs, 
-                    flow_early, flow_mean, flow_late, flow_nobs, flow_duration, intensity_p,
-                    gdd, daylength
-      ) %>% 
-      ungroup()
-    
-    ## extract monthly spring temperature in each year, one year at a time
-    t_data_all_years_list <- list()
-    t_data_all_years_months <- indiv_flow
-    yr_list <- 2012:2025
-    for(j in 1:4){ #start month loop
-      for(i in 1:length(yr_list)){ #start year loop
-        #create a raster of mean spring temperature for a particular year
-        tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
-        tmean_rast2_d <- pd_stack(tmean_rast_d)
-        tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-        
-        #convert the points to extract to sf
-        l_yr <- indiv_flow %>% filter(year_obs == yr_list[i])
-        l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
-        
-        #extract temperature for all points in that year
-        t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
-          raster::extract(x = tmean_focal_year, y = l_yr_sf)))
-        
-        #combine results into a list
-        t_data_all_years_list[[i]] <- t_data_focal_year
-      }
-      
       #merge all the years together
       t_data_all_years_month <- bind_rows(t_data_all_years_list)
       
@@ -414,15 +425,89 @@ library(robustbase)
     
     
     #join back into the parent dataset
-    indiv_flow_t <- left_join(indiv_flow, t_data_all_years_months)
+    indiv_leafout_t <- left_join(indiv_leafout, t_data_all_years_months)
     
-    #some derived variables
-    indiv_flow_t <- indiv_flow_t %>% rowwise() %>% 
-      mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
+    # #some derived variables
+    # indiv_leafout_t <- indiv_leafout_t %>% rowwise() %>% 
+    #   mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
 
 
 
-### analyze the difference between leafout and flowering for each species and create tables and figures in a loop ################
+### get temperature for indiv_flow for finding outliers ########################################################
+    #starting with the raw data and extracting relevant bits
+      indiv_flow_peak <- npn_direct %>% filter(phenophase_id == 501) %>% 
+        filter(phenophase_status == 1) %>% 
+        group_by(genus, species, individual_id, year_obs) %>% 
+        slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
+        filter(intensity_p > 0.2 ) #"what percentage of all fresh flowers on the plant are open?"
+      
+      indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
+        filter(phenophase_status == 1) %>% 
+        filter(intensity_p > 0.2 ) %>% 
+        group_by(genus, species, individual_id, year_obs) %>% 
+        summarize(flow_mean = mean(day_of_year),
+                  flow_early = min(day_of_year),
+                  flow_late = max(day_of_year),
+                  flow_nobs = n()) %>% 
+        mutate(flow_duration = flow_late - flow_early) %>% 
+        ungroup()
+    
+    #filter out bad observations and prepare data to extract
+      indiv_flow <- left_join(indiv_flow_peak, indiv_flow_summary) %>% 
+        filter(n_obs_per_person > 10) %>% 
+        filter(flow_duration < 15) %>% 
+        #filter(flow_late < 173) %>%  #solstice
+        mutate(year_obs = year(observation_date),
+               too_recent = case_when(year_obs == 2025 & flow_mean > 120 ~ "too recent",
+                                      TRUE ~ "not too recent")) %>% 
+        filter(too_recent == "not too recent") %>% #removing observations from this month
+        dplyr::select(genus, species, 
+                      individual_id, n_obs_per_person, longitude, latitude, year_obs, 
+                      flow_early, flow_mean, flow_late, flow_nobs, flow_duration, intensity_p,
+                      gdd, daylength) %>% 
+        ungroup()
+      
+    ## extract monthly spring temperature in each year, one year at a time
+    t_data_all_years_list <- list()
+    t_data_all_years_months <- indiv_flow
+    yr_list <- 2012:2025
+    for(j in 1:4){ #start month loop
+            for(i in 1:length(yr_list)){ #start year loop
+              #create a raster of mean spring temperature for a particular year
+              tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+              tmean_rast2_d <- pd_stack(tmean_rast_d)
+              tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+              
+              #convert the points to extract to sf
+              l_yr <- indiv_flow %>% filter(year_obs == yr_list[i])
+              l_yr_sf <- l_yr %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+              
+              #extract temperature for all points in that year
+              t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+                raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+              
+              #combine results into a list
+              t_data_all_years_list[[i]] <- t_data_focal_year
+            } #end year loop
+        
+        #merge all the years together
+        t_data_all_years_month <- bind_rows(t_data_all_years_list)
+        
+        #join the different months
+        t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
+    } #end month loop
+    
+    
+    #join back into the parent dataset
+     indiv_flow_t <- left_join(indiv_flow, t_data_all_years_months)
+    
+    # #some derived variables
+    #   indiv_flow_t <- indiv_flow_t %>% rowwise() %>% 
+    #     mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
+
+
+
+### analyze the difference between leaf out and flowering for each species and create tables and figures in a loop ################
   ## which species to include from npn
     npn_species_to_analyze <- lfp %>% group_by(genus, species) %>% summarize(n = n()) %>% arrange(-n) %>% #print(n = 80)
     filter(!(genus == "Quercus" & species == "douglasii"), #not an east coast species
@@ -432,9 +517,10 @@ library(robustbase)
            !(genus == "Populus" & species == "fremontii"),  #not an east coast species
            !(genus == "Celtis" & species == "occidentalis"),  #too few observations
            !(genus == "Salix" & species == "bebbiana"),  #too few observations
-           !(genus == "Acer" & species == "circinatum")) #not an east coast species
+           !(genus == "Acer" & species == "circinatum"), #not an east coast species
+           !(genus == "Acer" & species == "macrophyllum")) #not an east coast species
     
-  #loading in the nyc data to get median leafout date per species for nyc in 2024 for table 1
+  #loading in the nyc data to get median leaf out date per species for nyc in 2024 for table 1
     #this file was generated in the script "NYC_tree_flow.R"
     nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
 
@@ -448,15 +534,18 @@ library(robustbase)
 for(focal_sp_i in 1:36){
 
   #inputs for loop
-    focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
-    focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
+    focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Platanus"
+    focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"acerifolia"
     print(paste(focal_genus, focal_species))
     weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
 
 
   ### find leaf outliers and flag them 
-   ds_leaf <- indiv_leafout_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
-  
+    ds_leaf <- indiv_leafout_t %>% # version without Detroit data  #add Detroit data from DK indiv_leafout_t %>% 
+    #ds_leaf <- bind_rows(indiv_leafout_t, d_leafmax) %>%   #add Detroit data from DK indiv_leafout_t %>% 
+    filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
+
+   
   #fit a robust regression using the MM estimator
     mmfit_leaf <- lmrob(leaf_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
                    data = ds_leaf, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
@@ -472,7 +561,8 @@ for(focal_sp_i in 1:36){
       left_join(lfp, .)
   
   ### find flow outliers and flag them
-   ds_flow <- indiv_flow_t %>% filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #%>% filter(gdd > 0) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
+   ds_flow <- indiv_flow_t %>% #bind_rows(indiv_flow_t, d_flowmax) %>% #add Detroit data from DK
+              filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #%>% filter(gdd > 0) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
   
   #fit a robust regression using the MM estimator
     mmfit_flow <- lmrob(flow_mean ~  poly(t_month_1, 2) + poly(t_month_2, 2) + poly(t_month_3, 2) + poly(t_month_4, 2) + latitude , 
@@ -489,11 +579,24 @@ for(focal_sp_i in 1:36){
       filter(genus == focal_genus, species == focal_species) %>% 
       filter(longitude > -90 & longitude < -60) %>% 
       filter(n_obs_per_person > 10) %>% 
-      mutate(dif_leaf_flow = leaf_mean - flow_mean) %>% 
+      mutate(dif_leaf_flow = flow_mean - leaf_mean ) %>% 
       mutate(temp_outlier = case_when(weights_leaf < weight_cutoff_param ~ "leaf outlier",
                                     weights_flow < weight_cutoff_param ~ "flower outlier",
                                     .default = "not an outlier"))
   
+  ## add Detroit data
+    d_leafmax_join <- dplyr::select(d_leafmax, -intensity, -date_mean)  
+    d_flowmax_join <- dplyr::select(d_flowmax, -intensity, -date_mean, -Species)              
+    d_leafflowmax_join <- left_join(d_leafmax_join, d_flowmax_join) %>% 
+      filter(genus == focal_genus, species == focal_species) %>% 
+      filter(!is.na(flow_mean)) %>% 
+      mutate(temp_outlier = "direct observations",
+             weights_leaf = 1,
+             weights_flow = 1,
+             dif_leaf_flow = flow_mean - leaf_mean )
+    
+    ds3 <- bind_rows(ds3, d_leafflowmax_join)
+      
   ## visualize outliers of flowers or leaves vs temperatures and save figure
     flow_leaf_outliers_plot <- ds3 %>% 
       ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier)) + geom_point() + ggtitle(paste(focal_genus, focal_species)) +
@@ -532,12 +635,12 @@ for(focal_sp_i in 1:36){
     pred_dif_leaf_flow_lwr = flow_dif_preds$fit[,2],
     pred_dif_leaf_flow_upr = flow_dif_preds$fit[,3])
   
-  #flowering time vs leafout time for the full dataset with prediction intervals
+  #flowering time vs leaf out time for the full dataset with prediction intervals
   ggplot(ds5, aes(x =  leaf_mean, y = flow_mean )) + geom_point() + geom_abline(slope = 1, intercept = 0) + theme_bw() +
     geom_pointrange(aes(x = leaf_mean, 
-                        y = leaf_mean - pred_dif_leaf_flow, 
-                        ymin = leaf_mean - pred_dif_leaf_flow_lwr, 
-                        ymax = leaf_mean - pred_dif_leaf_flow_upr), col = "red", alpha = 0.3)
+                        y = leaf_mean + pred_dif_leaf_flow, 
+                        ymin = leaf_mean + pred_dif_leaf_flow_lwr, 
+                        ymax = leaf_mean + pred_dif_leaf_flow_upr), col = "red", alpha = 0.3)
 
 
 
@@ -569,8 +672,9 @@ for(focal_sp_i in 1:36){
   flow_dif_preds_nyc <- predict.lm(object = focal_fit, newdata = nyc_example_tree_pred_data, interval = "prediction", level = 0.5,
                                    se.fit = TRUE)
   
-###  table X: empirical differences between flowering times and leafout times in NPN and predicted in NYC in 2024 ------------
-  table_lf_focal <- data.frame(genus = focal_genus, species = focal_species, nobs = nrow(ds5), 
+###  table X: empirical differences between flowering times and leaf out times in NPN and predicted in NYC in 2024 ------------
+    #note that this is embedded within the species loop
+    table_lf_focal <- data.frame(genus = focal_genus, species = focal_species, nobs = nrow(ds5), 
                          lf_dif_global_emp_mean = round(mean(ds5$dif_leaf_flow), 3),
                          lf_dif_gloab_emp_p25 = round(quantile(ds5$dif_leaf_flow, 0.25), 3),
                          lf_dif_gloab_emp_p75 = round(quantile(ds5$dif_leaf_flow, 0.75), 3),
@@ -580,6 +684,7 @@ for(focal_sp_i in 1:36){
   table_lf_all_list[[focal_sp_i]] <- table_lf_focal
 
 ### SI table X: model fit details without outliers -----------------------------------------------------------------------------
+  #note that this is embedded within the species loop
   table_si_start_focal <- data.frame(
     genus = focal_genus, 
     species = focal_species, 
@@ -604,10 +709,11 @@ for(focal_sp_i in 1:36){
 
 ### combine individual rows from each species into a single dataframe
   table_si_all <- bind_rows(table_si_all_list)
-  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250611.csv")
+  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250613_weights_without_D.csv")
+ # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250611.csv")
   
   table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
-  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250611.csv")
+  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250613_weights_without_D.csv")
   
   
 
@@ -769,8 +875,8 @@ rowwise(fitted_models) %>% tidy(model)
 
 ### old stuff I'm not ready to delete yet ##################################################################
 
-# ### data visualization for finding outliers of leafout in the broader leafout dataset ###########################
-# # assessing which leafout observations are unusual for one species
+# ### data visualization for finding outliers of leaf out in the broader leaf out dataset ###########################
+# # assessing which leaf out observations are unusual for one species
 # ds <- indiv_leafout_t %>% filter(genus == "Quercus", species == "rubra") #%>% filter(gdd > 0)
 # #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
 # 

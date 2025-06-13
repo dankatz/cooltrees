@@ -56,22 +56,24 @@ nyc_sos_percentile_sp_yr <- nyc_sos %>%
     filter(ntrees > 10) #exclude species with few good individuals
 
 ## species that are available from npn
-#table_lf_all <- read_csv
+table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250613_weights_without_D.csv")
  npn_species_available <- table_lf_all %>% filter(nobs > 10) %>% filter(!is.na(lf_dif_pred_nyc_2024_mean )) %>% 
    mutate(species = paste(genus, species),
           nobs_npn = nobs) %>%  select(species, nobs_npn) %>% arrange(species)#to match the nyc_sos format
 
 #species represented in both nyc_sos and npn data
  nyc_npn_species_list <- left_join(nyc_sos_species_list, npn_species_available) %>% 
-   filter(nobs_npn > 10)
+   mutate(species = gsub("^\\S+ ", "", species)) %>% 
+   arrange(-ntrees) %>% 
+   filter(nobs_npn > 10) 
 
 
 #start species loop
-for(focal_sp_i in 1:1){
+for(focal_sp_i in 1:23){
   
   #inputs for loop
-  focal_genus <- "Betula" #npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
-  focal_species <- "papyrifera" #npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
+  focal_genus <- nyc_npn_species_list$genus[focal_sp_i] #focal_genus <-"Quercus"
+  focal_species <- nyc_npn_species_list$species[focal_sp_i] #focal_species <-"rubra"
 
   ### load in season start date for each individual tree that we have sos estimated for
   nyc_sos_focal_sp_raw <- filter(nyc_sos, species == paste(focal_genus, focal_species))
@@ -236,7 +238,7 @@ for(focal_sp_i in 1:1){
         ggtitle((paste(focal_genus, focal_species)))
     plot_interannual_timing
     ggsave(plot_interannual_timing, filename = paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_maps/",
-                  focal_genus,"/", focal_species, "/plot_flowering_interannual_timing.png"))
+                  focal_genus,"/", focal_species, "/plot_flowering_interannual_timing.png"), create.dir = TRUE)
       
      
 ### maps of flowering of individual trees for each species on each day ##########################
@@ -316,9 +318,8 @@ for(focal_sp_i in 1:1){
     gif_file_list <- list.files(path = output_directory_year, full.names = TRUE)
     gifski(gif_file_list, gif_file = paste0(output_directory, "animation_", focal_year_i,".gif"), delay = 0.5)
     
-  } ## end loop for year
-
-  #### map of peak flowering time for each species in a year 
+    
+    #### map of peak flowering time for each species in a year 
       flow_dif_preds_nyc_peak_date <-
         flow_dif_preds_nyc_v3 %>% 
         group_by(Point_ID, Year) %>% 
@@ -334,13 +335,12 @@ for(focal_sp_i in 1:1){
         st_as_sf(coords = c( "Lon", "Lat"), crs = 4326)
       
       
-      # aggregate daily flowering points to raster
+    # aggregate daily flowering points to raster
       flow_dif_preds_nyc_v3_terra <- terra::vect(flow_dif_preds_nyc_peak_date_sf)
       nyc_grid <- rast(ext(flow_dif_preds_nyc_v3_terra), resolution = 0.03, crs = crs(flow_dif_preds_nyc_v3_terra))
       flow_peak_rast <- terra::rasterize(flow_dif_preds_nyc_v3_terra, nyc_grid, field = "doy2", fun = "mean", background = NA)
       
-      
-      #create map
+    # create map
       map_max <- 
         ggplot() + ggthemes::theme_few() +   
         theme(panel.background = element_rect(fill='gray94', color = NA)) + 
@@ -353,9 +353,10 @@ for(focal_sp_i in 1:1){
        
       map_max_title <- paste0(output_directory,
                                 "/map_max_", focal_genus,"_", focal_species, "_", focal_year, ".png")
-      
       ggsave(filename = map_max_title, plot = map_max, units = "px", width = 3000, height = 2000)
-      
+        
+  } ## end loop for year
+
       
 } ### end species loop
 
