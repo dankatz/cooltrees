@@ -12,6 +12,7 @@ library(ggspatial)
 library(terra)
 library(tidyterra)
 library(gifski)
+library(stringr) 
 prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
 
 
@@ -529,3 +530,95 @@ for(focal_sp_i in 1:23){
  map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/fig_3_Quercus_rubra_flow_max_anomol.png")
  ggsave(filename = map_max_title, plot = fig3_map_flowmax_anomo, units = "px", width = 3000, height = 5000)
  
+
+ 
+ #### SI section: comparison to airborne pollen concentrations ###############################################
+ #Lincoln Center from Guy Robinson
+ #https://docs.google.com/spreadsheets/d/1m2Op3h86NFPQUpPDugqACCJatEhR_-ea_C_0nLNdSOE/edit#gid=0
+
+ #manually remove the first blank 2 rows and initial couple of columns that have an unusual format
+ pol_raw <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/airborne pollen/Lincoln_Center_semi_processed_google_sheets_download_250620.csv", 
+                     name_repair = "minimal") %>% 
+   t() %>% 
+   as_tibble() %>% 
+   `colnames<-`(c("date_obs", "p_tot", "nothing", "perc_by_taxa")) %>% 
+   select(-nothing) 
+
+ pol_entry_list <- list()
+ 
+ for(i in 1:17){ #most number of taxa recorded on a single day: 17
+ pol_entry_i <- 
+   pol_raw %>% 
+   mutate(p_total = parse_number(p_tot),
+          entry1 = str_split_i(string = perc_by_taxa, pattern = "%", i = i),
+          taxon = tolower(str_trim(str_replace_all(entry1, "[^a-zA-Z ]", ""))),
+          pol_perc = parse_number(entry1),
+          pol_perc = case_when(entry1 == "No Pollen" ~ 0, .default = pol_perc),
+          pol_pcm = p_total * (pol_perc/100) ) %>% 
+   select(date_obs, taxon, pol_pcm) %>% 
+   filter(!is.na(taxon)) %>% 
+   filter(taxon != "")
+ pol_entry_list[[i]] <- pol_entry_i
+ }
+ 
+ pol <- bind_rows(pol_entry_list) %>% 
+   arrange(date_obs, taxon) %>% 
+   mutate(date_obs = mdy(date_obs),
+          year_obs = year(date_obs),
+          doy = yday(date_obs))
+ 
+ #adding in rows for missing dates
+ date_obs <- data.frame(date_obs = seq(ymd('2022-01-01'),ymd('2024-12-31'), by = '1 day'))
+ pol_NAs <-  left_join(date_obs, pol) 
+
+
+ #create figure for Quercus for each year
+ #days of peak flowering
+ oak_spp <- c("Quercus rubra", "Quercus pallustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina")
+ nyc_sos_fpred_quercus <- 
+   nyc_sos_fpred %>% 
+   filter(species %in% oak_spp) %>% 
+   group_by(Year, focal_perc_0.5) %>% 
+   summarize(total_per_day_at_peak = n()) %>% 
+   mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
+ nyc_sos_fpred_quercus_cumsum <- nyc_sos_fpred_quercus %>% slice_max(cumulative_number_peaked) %>% 
+   mutate(cum_total = cumulative_number_peaked) %>% 
+   select(Year, cum_total)
+ nyc_sos_fpred_quercus <- left_join( nyc_sos_fpred_quercus,  nyc_sos_fpred_quercus_cumsum) %>% 
+   mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
+   rename(doy = focal_perc_0.5) %>% 
+   mutate(year_obs = Year) %>% 
+   filter(year_obs > 2021)
+ 
+ #need to add in some other prediction intervals here too, maybe 25-75 and 10-90?
+ 
+ 
+ pol_NAs_qusp_max <- pol_NAs %>% 
+   filter(taxon == "oak" | is.na(taxon)) %>% 
+   group_by(year_obs) %>% 
+   summarize(pol_yr_pcm_max = max(pol_pcm, na.rm = TRUE))
+  
+ pol_NAs %>% 
+   filter(taxon == "oak" | is.na(taxon)) %>% 
+   left_join(., pol_NAs_qusp_max) %>% 
+   mutate(pol_pcm_prop = pol_pcm / pol_yr_pcm_max) %>% 
+    filter(year_obs > 2019 & year_obs != 2025) %>% 
+   filter(doy < 200) %>% 
+   filter(doy >75) %>% 
+ ggplot() + 
+   geom_point(aes(x = doy, y = pol_pcm_prop)) + 
+   geom_line(aes(x = doy, y = pol_pcm_prop), alpha = 0.5) +
+    facet_wrap(~year_obs, scales = "free_y", ncol = 1) +
+   geom_line(data = nyc_sos_fpred_quercus, aes(x = doy, y = cum_prop ), color = "red")+
+   scale_x_continuous(limits = c(100, 150))+
+   ylab("proportion (of maximum pollen concentration recorded that year)") +
+   scale_y_continuous(sec.axis = sec_axis(~., name="cumulative proportion of trees with peak release in this period") ) +
+   ggthemes::theme_few()  +
+   theme(
+     axis.line.y.right = element_line(color = "red"),  # Change secondary axis line color
+     axis.text.y.right = element_text(color = "red"),   # Change secondary axis text color
+     axis.title.y.right = element_text(color = "red")
+   ) 
+
+ 
+
