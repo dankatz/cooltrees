@@ -115,8 +115,8 @@
     filter(phenophase_status == 1) %>% 
     filter(day_of_year < 173) %>%  #solstice
     group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
-    slice(which.min(abs(intensity_p - 0.5))) %>% 
-    filter(intensity_p > 0.2 & intensity_p < 0.8) #test <- npn_direct %>% filter( genus == "Platanus")
+    slice(which.min(abs(intensity_p - 0.5))) %>% #select the observation with the highest intensity
+    filter(intensity_p > 0.2 & intensity_p < 0.8) # exclude observations not at high intensity
   
   indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
     filter(phenophase_status == 1) %>% 
@@ -179,90 +179,90 @@
             #   summarize(nobs = n())
 
 ### process non-NPN data from DK and other sources #############################
-   #open data from Detroit in 2017
-    #this is from the script: "C:\Users\dsk273\Box\MIpostdoc\trees\Phenology and daily variation in pollen release\parsing_pheno_measurements.R" 
-    #documentation is available: "phenology and relative release SOP 170626.docx" in the same folder
-     phenotree <- readr::read_csv("C:/Users/dsk273/Box/MIpostdoc/trees/Phenology and daily variation in pollen release/phenotree250418.csv") %>% 
-       st_as_sf(coords = c( "POINT_X", "POINT_Y"), crs = 3857) %>% #turns out the field collected data were in WGS84 Web Mercator
-       st_transform(., 4326) %>% 
-       mutate(longitude = sf::st_coordinates(.)[,1],
-              latitude = sf::st_coordinates(.)[,2]) %>% 
-       mutate(year_obs = 2017,
-              genus = stringr::word(Species, 1),
-              species = stringr::word(Species, 2),
-              species = case_when(genus == "Platanus" & species == "x" ~ "acerifolia", .default = species),
-              elevation_in_meters = 200) %>% # actual elevation of sites was all within ~25 m of this
-      st_drop_geometry() %>% 
-      filter(!(pheno_ID == "76d7b4e0-e525-439c-a03d-9be53b3968b3" & created_date == "4/21/2017 19:37")) %>% 
-      filter(!(pheno_ID == "8040fab7-2224-4c6e-8b47-356df9b13605" & created_date == "4/28/2017 18:01"))
-      
-     #phenotree_sf$lon; phenotree_sf$lat; plot(phenotree_sf[,1])  #checks
-        #test <- phenotree %>% filter(Species == "Platanus x acerfolia") %>% arrange( tree, date)
-    
-    # #add in additional observations of Platanus acerifolia from DK from several years based on photos
-    #   phenotree_additional_obs <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/manual Plac observations from DK 250613.csv") %>% 
-    #     mutate( date = mdy(date),
-    #             julia = yday(date),
-    #             year_obs = year(date))
-      # 
-      # phenotree <- bind_rows(phenotree, phenotree_additional_obs)
-    
-     ## extract monthly spring temperature in each year, one year at a time
-         t_data_all_years_list <- list()
-         t_data_all_years_months <- phenotree
-         yr_list <- unique(phenotree$year_obs)
-         for(j in 1:4){ #start month loop
-           for(i in 1:length(yr_list)){ #start year loop
-             #create a raster of mean spring temperature for a particular year
-             tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
-             tmean_rast2_d <- pd_stack(tmean_rast_d)
-             tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-             
-             #convert the points to extract to sf
-             l_yr <- phenotree %>% filter(year_obs == yr_list[i])
-             l_yr_sf <- phenotree %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
-             
-             #extract temperature for all points in that year
-              t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
-               raster::extract(x = tmean_focal_year, y = l_yr_sf)))
-             
-             #combine results into a list
-             t_data_all_years_list[[i]] <- t_data_focal_year
-           } #end year loop
-           
-           #merge all the years together
-           t_data_all_years_month <- bind_rows(t_data_all_years_list)
-           
-           #join the different months
-           t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
-         } #end month loop
-     
-     
-     #join back into the parent dataset
-         phenotree <- left_join(phenotree, t_data_all_years_months) #names(phenotree)
-    
-     #calculate the day of peak leaf expansion ("Stage D") for each tree
-       #"Stage D: leaves partly expanded" vs. "Stage C: new shoots emerging" vs. "Stage E: leaves fully expanded"
-      d_leafmax <- phenotree %>%
-        group_by(genus, species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
-        slice_max(leaf_d) %>% 
-        summarize(date_mean = mean(date), #taking the middle date if there are multiple
-                  leaf_mean = mean(julia),
-                  intensity = mean(leaf_d)/100)%>% 
-        ungroup() %>% 
-        filter(intensity > 0.25) #remove the one tree where peak leaf expansion wasn't observed
-    
-    # calculate the day of peak mature flowers ("stage Y") for each tree
-    # "Stage y: flowers fully developed" vs. "Stage x: immature inflorescence visible" vs. "Stage z: flowers senescent"
-      d_flowmax <- phenotree %>%
-        group_by(genus, species, Species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
-        slice_max(flower_y) %>% 
-        summarize(date_mean = mean(date),
-                  flow_mean = mean(julia),
-                  intensity = mean(flower_y)/100) %>% 
-        filter(!(Species == "Platanus x acerfolia" & intensity < 0.01)) %>% 
-        filter(!(Species != "Platanus x acerfolia" & intensity < 0.25))%>% 
-        ungroup()
+   # #data from Detroit in 2017
+   #  #this is from the script: "C:\Users\dsk273\Box\MIpostdoc\trees\Phenology and daily variation in pollen release\parsing_pheno_measurements.R" 
+   #  #documentation is available: "phenology and relative release SOP 170626.docx" in the same folder
+   #   phenotree <- readr::read_csv("C:/Users/dsk273/Box/MIpostdoc/trees/Phenology and daily variation in pollen release/phenotree250418.csv") %>% 
+   #     st_as_sf(coords = c( "POINT_X", "POINT_Y"), crs = 3857) %>% #turns out the field collected data were in WGS84 Web Mercator
+   #     st_transform(., 4326) %>% 
+   #     mutate(longitude = sf::st_coordinates(.)[,1],
+   #            latitude = sf::st_coordinates(.)[,2]) %>% 
+   #     mutate(year_obs = 2017,
+   #            genus = stringr::word(Species, 1),
+   #            species = stringr::word(Species, 2),
+   #            species = case_when(genus == "Platanus" & species == "x" ~ "acerifolia", .default = species),
+   #            elevation_in_meters = 200) %>% # actual elevation of sites was all within ~25 m of this
+   #    st_drop_geometry() %>% 
+   #    filter(!(pheno_ID == "76d7b4e0-e525-439c-a03d-9be53b3968b3" & created_date == "4/21/2017 19:37")) %>% 
+   #    filter(!(pheno_ID == "8040fab7-2224-4c6e-8b47-356df9b13605" & created_date == "4/28/2017 18:01"))
+   #    
+   #   #phenotree_sf$lon; phenotree_sf$lat; plot(phenotree_sf[,1])  #checks
+   #      #test <- phenotree %>% filter(Species == "Platanus x acerfolia") %>% arrange( tree, date)
+   #  
+   #  # #add in additional observations of Platanus acerifolia from DK from several years based on photos
+   #  #   phenotree_additional_obs <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/manual Plac observations from DK 250613.csv") %>% 
+   #  #     mutate( date = mdy(date),
+   #  #             julia = yday(date),
+   #  #             year_obs = year(date))
+   #    # 
+   #    # phenotree <- bind_rows(phenotree, phenotree_additional_obs)
+   #  
+   #   ## extract monthly spring temperature in each year, one year at a time
+   #       t_data_all_years_list <- list()
+   #       t_data_all_years_months <- phenotree
+   #       yr_list <- unique(phenotree$year_obs)
+   #       for(j in 1:4){ #start month loop
+   #         for(i in 1:length(yr_list)){ #start year loop
+   #           #create a raster of mean spring temperature for a particular year
+   #           tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
+   #           tmean_rast2_d <- pd_stack(tmean_rast_d)
+   #           tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
+   #           
+   #           #convert the points to extract to sf
+   #           l_yr <- phenotree %>% filter(year_obs == yr_list[i])
+   #           l_yr_sf <- phenotree %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
+   #           
+   #           #extract temperature for all points in that year
+   #            t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
+   #             raster::extract(x = tmean_focal_year, y = l_yr_sf)))
+   #           
+   #           #combine results into a list
+   #           t_data_all_years_list[[i]] <- t_data_focal_year
+   #         } #end year loop
+   #         
+   #         #merge all the years together
+   #         t_data_all_years_month <- bind_rows(t_data_all_years_list)
+   #         
+   #         #join the different months
+   #         t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
+   #       } #end month loop
+   #   
+   #   
+   #   #join back into the parent dataset
+   #       phenotree <- left_join(phenotree, t_data_all_years_months) #names(phenotree)
+   #  
+   #   #calculate the day of peak leaf expansion ("Stage D") for each tree
+   #     #"Stage D: leaves partly expanded" vs. "Stage C: new shoots emerging" vs. "Stage E: leaves fully expanded"
+   #    d_leafmax <- phenotree %>%
+   #      group_by(genus, species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
+   #      slice_max(leaf_d) %>% 
+   #      summarize(date_mean = mean(date), #taking the middle date if there are multiple
+   #                leaf_mean = mean(julia),
+   #                intensity = mean(leaf_d)/100)%>% 
+   #      ungroup() %>% 
+   #      filter(intensity > 0.25) #remove the one tree where peak leaf expansion wasn't observed
+   #  
+   #  # calculate the day of peak mature flowers ("stage Y") for each tree
+   #  # "Stage y: flowers fully developed" vs. "Stage x: immature inflorescence visible" vs. "Stage z: flowers senescent"
+   #    d_flowmax <- phenotree %>%
+   #      group_by(genus, species, Species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
+   #      slice_max(flower_y) %>% 
+   #      summarize(date_mean = mean(date),
+   #                flow_mean = mean(julia),
+   #                intensity = mean(flower_y)/100) %>% 
+   #      filter(!(Species == "Platanus x acerfolia" & intensity < 0.01)) %>% 
+   #      filter(!(Species != "Platanus x acerfolia" & intensity < 0.25))%>% 
+   #      ungroup()
     
     
       
@@ -380,13 +380,13 @@
     
     #filter out bad observations and prepare data to extract
     indiv_leafout <- left_join(indiv_leafout_peak, indiv_leafout_summary) %>% 
-      filter(n_obs_per_person > 10) %>% 
-      filter(leafout_duration < 15) %>% 
-      filter(leaf_late < 173) %>%  #solstice
+      filter(n_obs_per_person > 10) %>%  #remove observers that took fewer than 10 observations
+      filter(leafout_duration < 15) %>% #remove observations that had leaf out duration of > 2 weeks 
+      filter(leaf_late < 173) %>%  #observations where leaf out occured after the solstice
        mutate(year_obs = year(observation_date),
              too_recent = case_when(year_obs == 2025 & leaf_mean > 120 ~ "too recent",
                                     TRUE ~ "not too recent")) %>% 
-      filter(too_recent == "not too recent") %>% #removing observations from this month
+      filter(too_recent == "not too recent") %>% #removing observations from this month (NPN has more recent data than PRISM)
       dplyr::select(genus, species, 
                     individual_id, n_obs_per_person, longitude, latitude, year_obs, 
                     leaf_early, leaf_mean, leaf_late, leaf_nobs, leafout_duration, intensity_p #gdd, daylength
@@ -430,7 +430,8 @@
     # #some derived variables
     # indiv_leafout_t <- indiv_leafout_t %>% rowwise() %>% 
     #   mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
-
+    #write_csv(indiv_leafout_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250624.csv")
+    #write_csv(indiv_flow_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250624.csv")
 
 
 ### get temperature for indiv_flow for finding outliers ########################################################
@@ -527,7 +528,7 @@
 
 
 ## start species loop
-    #creating some files to paste into
+    #creating some empty lists to paste into
     table_lf_all_list <- list()
     table_si_all_list <- list()
     
