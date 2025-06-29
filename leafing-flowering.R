@@ -50,33 +50,28 @@ weights <- pmin(1, k / abs(initial_residuals))
 phenology_data <- phenology_data %>%
   mutate(weights = weights)
 
-# Weighted Regression
-weighted_fit <- lm(flowering_date ~ leaf_out_date, data = phenology_data, weights = weights)
-
-# Robust Regression with increased maximum iterations and method set to "MM"
-robust_fit <- MASS::rlm(flowering_date ~ leaf_out_date, data = phenology_data, maxit = 100, method = "MM")
-
 # Plot flowering_date vs. leaf_out_date with different fits
 ggplot(phenology_data, aes(x = leaf_out_date, y = flowering_date, color = outlier_type)) +
   geom_point(size = 3) +
-  geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE, linetype = "solid", linewidth = 1) +
-  geom_smooth(method = "lm", formula = y ~ x, aes(weight = weights), color = "green", se = FALSE, linetype = "dashed", linewidth = 1) +
-  geom_smooth(method = MASS::rlm, formula = y ~ x, color = "red", se = FALSE, linetype = "dotted", linewidth = 1, n = 150, method.args = list(maxit = 100, method = "MM")) +
+  geom_smooth(method = "lm", formula = y ~ x, aes(linetype = "OLS"), color = "blue", se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ x, aes(linetype = "Weighted", weight = weights), color = "green", se = FALSE, linewidth = 1) +
+  geom_smooth(method = "rlm", formula = y ~ x, method.args = list(maxit = 100, method = "MM"), aes(linetype = "Robust"), color = "red", se = FALSE, linewidth = 1) +
   scale_color_manual(values = c("flower outlier" = "cyan", "leaf outlier" = "green", "regular point" = "yellow")) +
-  labs(x = "Peak leaf out (day of year)", y = "Peak flowering (day of year)", color = "Data quality") +
+  scale_linetype_manual(values = c("OLS" = "solid", "Weighted" = "dashed", "Robust" = "dotted")) +
+  labs(x = "Peak leaf out (day of year)", y = "Peak flowering (day of year)", color = "Data quality", linetype = "Regression method") +
   theme_minimal() +
-  ggtitle("Peak flowering vs. leaf out with regression fits")
+  ggtitle("Peak flowering vs. leaf out with regression fits") +
+  guides(linetype = guide_legend(title = "Regression method"))
 
 # Plot difference vs. temperature with different fits
 ggplot(phenology_data, aes(x = temperature, y = difference, color = outlier_type)) +
   geom_point(size = 3, aes(size = weights)) +
-  geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE, linetype = "solid", linewidth = 1) +
-  geom_smooth(method = "lm", formula = y ~ x, aes(weight = weights), color = "green", se = FALSE, linetype = "dashed", linewidth = 1) +
-  geom_smooth(method = MASS::rlm, formula = y ~ x, color = "red", linetype = "dotted", se = FALSE, linewidth = 1, n = 150, method.args = list(maxit = 100, method = "MM")) +
-  labs(x = "Temperature", y = "Difference between leafing and flowering", color = "Data quality") +
-  theme_minimal() +
-  scale_size_continuous(name = "Weight") +
+  geom_smooth(method = "lm", formula = y ~ x, aes(linetype = "OLS"), color = "blue", se = FALSE, linewidth = 1) +
+  geom_smooth(method = "lm", formula = y ~ x, aes(linetype = "Weighted", weight = weights), color = "green", se = FALSE, linewidth = 1) +
+  geom_smooth(method = "rlm", formula = y ~ x, method.args = list(maxit = 100, method = "MM"), aes(linetype = "Robust"), color = "red", se = FALSE, linewidth = 1) +
   scale_color_manual(values = c("flower outlier" = "cyan", "leaf outlier" = "green", "regular point" = "yellow")) +
-  guides(size = guide_legend(override.aes = list(alpha = 1))) +
-  theme(legend.position = "top") +
-  ggtitle("Difference between leafing and flowering with regression fits")
+  scale_linetype_manual(values = c("OLS" = "solid", "Weighted" = "dashed", "Robust" = "dotted")) +
+  labs(x = "Temperature", y = "Difference between leafing and flowering", color = "Data quality", linetype = "Regression method") +
+  theme_minimal() +
+  ggtitle("Difference between leafing and flowering with regression fits") +
+  guides(linetype = guide_legend(title = "Regression method"))
