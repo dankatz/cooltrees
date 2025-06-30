@@ -75,3 +75,26 @@ ggplot(phenology_data, aes(x = temperature, y = difference, color = outlier_type
   theme_minimal() +
   ggtitle("Difference between leafing and flowering with regression fits") +
   guides(linetype = guide_legend(title = "Regression method"))
+
+
+# comparing predictions intervals of different regression types
+
+  #OLS Regression
+  ols_fit <- lm(difference ~ leaf_out_date, data = phenology_data)
+
+  # Weighted Regression
+  weighted_fit <- lm(difference ~ leaf_out_date, data = phenology_data, weights = weights)
+  
+  # Robust Regression with increased maximum iterations and method set to "MM"
+  robust_fit <- MASS::rlm(difference ~ leaf_out_date, data = phenology_data, maxit = 100, method = "MM")
+
+  #create a dataframe to create prediction for
+  new_data <- data.frame(temperature = rnorm(n, mean = 15, sd = 3),
+                        leaf_out_date = rnorm(n, mean = 130, sd = 12) - 2 * temperature)
+
+  #create predictions
+  predict.lm(object = ols_fit, newdata = new_data, interval = "prediction", level = 0.95)
+  predict.lm(object = weighted_fit, newdata = new_data, interval = "prediction", level = 0.95)
+  predict(object = robust_fit, newdata = new_data, interval = "prediction", level = 0.95)
+
+    
