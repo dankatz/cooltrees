@@ -180,33 +180,33 @@
 
 ### process non-NPN data from DK and other sources #############################
    # #data from Detroit in 2017
-   #  #this is from the script: "C:\Users\dsk273\Box\MIpostdoc\trees\Phenology and daily variation in pollen release\parsing_pheno_measurements.R" 
+   #  #this is from the script: "C:\Users\dsk273\Box\MIpostdoc\trees\Phenology and daily variation in pollen release\parsing_pheno_measurements.R"
    #  #documentation is available: "phenology and relative release SOP 170626.docx" in the same folder
-   #   phenotree <- readr::read_csv("C:/Users/dsk273/Box/MIpostdoc/trees/Phenology and daily variation in pollen release/phenotree250418.csv") %>% 
+   #   phenotree <- readr::read_csv("C:/Users/dsk273/Box/MIpostdoc/trees/Phenology and daily variation in pollen release/phenotree250418.csv") %>%
    #     st_as_sf(coords = c( "POINT_X", "POINT_Y"), crs = 3857) %>% #turns out the field collected data were in WGS84 Web Mercator
-   #     st_transform(., 4326) %>% 
+   #     st_transform(., 4326) %>%
    #     mutate(longitude = sf::st_coordinates(.)[,1],
-   #            latitude = sf::st_coordinates(.)[,2]) %>% 
+   #            latitude = sf::st_coordinates(.)[,2]) %>%
    #     mutate(year_obs = 2017,
    #            genus = stringr::word(Species, 1),
    #            species = stringr::word(Species, 2),
    #            species = case_when(genus == "Platanus" & species == "x" ~ "acerifolia", .default = species),
    #            elevation_in_meters = 200) %>% # actual elevation of sites was all within ~25 m of this
-   #    st_drop_geometry() %>% 
-   #    filter(!(pheno_ID == "76d7b4e0-e525-439c-a03d-9be53b3968b3" & created_date == "4/21/2017 19:37")) %>% 
+   #    st_drop_geometry() %>%
+   #    filter(!(pheno_ID == "76d7b4e0-e525-439c-a03d-9be53b3968b3" & created_date == "4/21/2017 19:37")) %>%
    #    filter(!(pheno_ID == "8040fab7-2224-4c6e-8b47-356df9b13605" & created_date == "4/28/2017 18:01"))
-   #    
+   # 
    #   #phenotree_sf$lon; phenotree_sf$lat; plot(phenotree_sf[,1])  #checks
    #      #test <- phenotree %>% filter(Species == "Platanus x acerfolia") %>% arrange( tree, date)
-   #  
+   # 
    #  # #add in additional observations of Platanus acerifolia from DK from several years based on photos
-   #  #   phenotree_additional_obs <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/manual Plac observations from DK 250613.csv") %>% 
+   #  #   phenotree_additional_obs <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/manual Plac observations from DK 250613.csv") %>%
    #  #     mutate( date = mdy(date),
    #  #             julia = yday(date),
    #  #             year_obs = year(date))
-   #    # 
+   #    #
    #    # phenotree <- bind_rows(phenotree, phenotree_additional_obs)
-   #  
+   # 
    #   ## extract monthly spring temperature in each year, one year at a time
    #       t_data_all_years_list <- list()
    #       t_data_all_years_months <- phenotree
@@ -217,54 +217,57 @@
    #           tmean_rast_d <- prism_archive_subset(temp_period = "monthly", type = "tmean", mon = j, years = yr_list[i])
    #           tmean_rast2_d <- pd_stack(tmean_rast_d)
    #           tmean_focal_year <- raster::calc(tmean_rast2_d, mean) #raster::plot(r_mean)
-   #           
+   # 
    #           #convert the points to extract to sf
    #           l_yr <- phenotree %>% filter(year_obs == yr_list[i])
-   #           l_yr_sf <- phenotree %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326) 
-   #           
+   #           l_yr_sf <- phenotree %>% st_as_sf(coords = c( "longitude", "latitude"), crs = 4326)
+   # 
    #           #extract temperature for all points in that year
    #            t_data_focal_year <- mutate(l_yr, "{paste0('t_month_', j)}" := unlist( #dynamically renaming variable
    #             raster::extract(x = tmean_focal_year, y = l_yr_sf)))
-   #           
+   # 
    #           #combine results into a list
    #           t_data_all_years_list[[i]] <- t_data_focal_year
    #         } #end year loop
-   #         
+   # 
    #         #merge all the years together
    #         t_data_all_years_month <- bind_rows(t_data_all_years_list)
-   #         
+   # 
    #         #join the different months
    #         t_data_all_years_months <- left_join(t_data_all_years_months, t_data_all_years_month)
    #       } #end month loop
-   #   
-   #   
+   # 
+   # 
    #   #join back into the parent dataset
    #       phenotree <- left_join(phenotree, t_data_all_years_months) #names(phenotree)
-   #  
+   # 
    #   #calculate the day of peak leaf expansion ("Stage D") for each tree
    #     #"Stage D: leaves partly expanded" vs. "Stage C: new shoots emerging" vs. "Stage E: leaves fully expanded"
    #    d_leafmax <- phenotree %>%
-   #      group_by(genus, species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
-   #      slice_max(leaf_d) %>% 
+   #      group_by(genus, species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>%
+   #      slice_max(leaf_d) %>%
    #      summarize(date_mean = mean(date), #taking the middle date if there are multiple
    #                leaf_mean = mean(julia),
-   #                intensity = mean(leaf_d)/100)%>% 
-   #      ungroup() %>% 
+   #                intensity = mean(leaf_d)/100)%>%
+   #      ungroup() %>%
    #      filter(intensity > 0.25) #remove the one tree where peak leaf expansion wasn't observed
-   #  
+   # 
    #  # calculate the day of peak mature flowers ("stage Y") for each tree
    #  # "Stage y: flowers fully developed" vs. "Stage x: immature inflorescence visible" vs. "Stage z: flowers senescent"
    #    d_flowmax <- phenotree %>%
-   #      group_by(genus, species, Species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>% 
-   #      slice_max(flower_y) %>% 
+   #      group_by(genus, species, Species, longitude, latitude, elevation_in_meters, year_obs, tree, t_month_1, t_month_2, t_month_3, t_month_4) %>%
+   #      slice_max(flower_y) %>%
    #      summarize(date_mean = mean(date),
    #                flow_mean = mean(julia),
-   #                intensity = mean(flower_y)/100) %>% 
-   #      filter(!(Species == "Platanus x acerfolia" & intensity < 0.01)) %>% 
-   #      filter(!(Species != "Platanus x acerfolia" & intensity < 0.25))%>% 
+   #                intensity = mean(flower_y)/100) %>%
+   #      filter(!(Species == "Platanus x acerfolia" & intensity < 0.01)) %>%
+   #      filter(!(Species != "Platanus x acerfolia" & intensity < 0.25))%>%
    #      ungroup()
-    
-    
+   #  
+   #    #write_csv(d_leafmax, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/detroit_leafmax_250630.csv")
+   #    #write_csv(d_flowmax, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/detroit_flowmax_250630.csv")
+   #    #d_leafmax <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/detroit_leafmax_250630.csv")
+   #    
       
 ### extract temperature data for each location in each year ####################
   prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
@@ -432,6 +435,8 @@
     #   mutate(t_month_1_4 = mean(t_month_1, t_month_2, t_month_3, t_month_4, na.rm = TRUE)) %>% ungroup()
     #write_csv(indiv_leafout_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250624.csv")
     #write_csv(indiv_flow_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250624.csv")
+    #indiv_leafout_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250624.csv")
+    #indiv_flow_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250624.csv")
 
 
 ### get temperature for indiv_flow for finding outliers ########################################################
@@ -532,13 +537,12 @@
     table_lf_all_list <- list()
     table_si_all_list <- list()
     
-for(focal_sp_i in 1:36){
+for(focal_sp_i in 8:36){
 
   #inputs for loop
-    focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Platanus"
-    focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"acerifolia"
+    focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
+    focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
     print(paste(focal_genus, focal_species))
-    weight_cutoff_param <- 0.8 #what is the threshold weight to include from the lmrob? (0 = outlier, 1 = no problem with point)
 
 
   ### find leaf outliers and flag them 
@@ -557,7 +561,7 @@ for(focal_sp_i in 1:36){
   #extract the weights and residuals from the lmrob and join them back to the leaf data
     ds2_leaf <- ds_leaf %>% mutate(weights_leaf = mmfit_leaf$rweights, 
                          residuals_leaf = mmfit_leaf$residuals) %>% 
-      select(genus, species, individual_id, year_obs, weights_leaf, residuals_leaf,
+      dplyr::select(genus, species, individual_id, year_obs, weights_leaf, residuals_leaf,
              t_month_1, t_month_2, t_month_3, t_month_4) %>% 
       left_join(lfp, .)
   
@@ -572,7 +576,7 @@ for(focal_sp_i in 1:36){
   #passing off the weights and residuals from the lmrob
     ds2_flow <- ds_flow %>% mutate(weights_flow = mmfit_flow$rweights, 
                                    residuals_flow = mmfit_flow$residuals) %>% 
-      select(genus, species, individual_id, year_obs, weights_flow, residuals_flow) %>% 
+      dplyr::select(genus, species, individual_id, year_obs, weights_flow, residuals_flow) %>% 
       left_join(lfp, .)
   
   ## join flowers and leaf
@@ -581,8 +585,8 @@ for(focal_sp_i in 1:36){
       filter(longitude > -90 & longitude < -60) %>% 
       filter(n_obs_per_person > 10) %>% 
       mutate(dif_leaf_flow = flow_mean - leaf_mean ) %>% 
-      mutate(temp_outlier = case_when(weights_leaf < weight_cutoff_param ~ "leaf outlier",
-                                    weights_flow < weight_cutoff_param ~ "flower outlier",
+      mutate(temp_outlier = case_when(weights_leaf < 0.8 ~ "leaf outlier",
+                                    weights_flow < 0.8 ~ "flower outlier",
                                     .default = "not an outlier"))
   
   ## add Detroit data
@@ -600,9 +604,10 @@ for(focal_sp_i in 1:36){
       
   ## visualize outliers of flowers or leaves vs temperatures and save figure
     flow_leaf_outliers_plot <- ds3 %>% 
-      ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier)) + geom_point() + ggtitle(paste(focal_genus, focal_species)) +
+      ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier, size = weights_leaf)) + geom_point(alpha = 0.5) + ggtitle(paste(focal_genus, focal_species)) +
       geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d(name = "data quality")+ 
-      xlab("peak leaf out (day of year)") + ylab("peak flowering (day of year)") 
+      xlab("peak leaf out (day of year)") + ylab("peak flowering (day of year)") +
+      scale_size_continuous(range = c(0.1,2), name = "leaf out ~ temperature weights")
     flow_leaf_outliers_plot_fig_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
                                                  focal_genus, "_", focal_species, ".jpg")
     ggsave(flow_leaf_outliers_plot_fig_title, flow_leaf_outliers_plot)
@@ -612,13 +617,13 @@ for(focal_sp_i in 1:36){
   #   ggplot(aes(x = dif_leaf_flow, color = temp_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
   
   #extract statistics
-  ds4 <- ds3 %>% 
-    filter(weights_leaf > weight_cutoff_param) %>% 
-    filter(weights_flow > weight_cutoff_param) 
+  ds4 <- ds3  
+    # filter(weights_leaf > weight_cutoff_param) %>% 
+    # filter(weights_flow > weight_cutoff_param) 
   
-  focal_fit <- lm(dif_leaf_flow ~ leaf_mean 
+  focal_fit <- lmrob(dif_leaf_flow ~ leaf_mean 
             + t_month_1 + t_month_2 + t_month_3 + t_month_4 +  elevation_in_meters + latitude 
-            , data = ds4)
+            , data = ds4, weights = weights_leaf)
   summary(focal_fit)
   
     ## save the species model for use in the NYC_tree_flow.R script
@@ -628,7 +633,7 @@ for(focal_sp_i in 1:36){
   # quantile(focal_fit$residuals, probs = c(.10, .25, .75, .90))
   # quantile(focal_fit$fitted.values, probs = c(.10, .25, .75, .90))
   
-  flow_dif_preds <- predict.lm(object = focal_fit, newdata = ds4, interval = "prediction", level = 0.95,
+  flow_dif_preds <- predict(object = focal_fit, newdata = ds4, interval = "prediction", level = 0.95,
                                se.fit = TRUE)
     
   ds5 <- ds4 %>% mutate(
@@ -690,8 +695,8 @@ for(focal_sp_i in 1:36){
     genus = focal_genus, 
     species = focal_species, 
     nobs = nrow(ds5),
-    outliers_leaf_n = length(ds3$temp_outlier[ds3$temp_outlier == "leaf outlier"]),
-    outliers_flow_n = length(ds3$temp_outlier[ds3$temp_outlier == "flower outlier"])
+    outliers_leaf_n = length(ds3$temp_outlier[ds3$temp_outlier == "leaf outlier"])
+    #outliers_flow_n = length(ds3$temp_outlier[ds3$temp_outlier == "flower outlier"])
     )
   
   tidy_focal_fit <- broom::tidy(focal_fit) %>% 

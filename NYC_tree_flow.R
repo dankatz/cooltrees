@@ -869,6 +869,7 @@ for(focal_sp_i in 1:23){
        
 head(nyc_sos)
 
-nyc_sos %>% filter(species == "Quercus rubra") %>% 
+nyc_sos %>% #filter(species == "Quercus rubra") %>% 
   filter(R2 > 0.7) %>% 
+  group_by(Poly_ID) %>% 
   summarize(n=n())
