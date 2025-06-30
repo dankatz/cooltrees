@@ -13,6 +13,7 @@ library(terra)
 library(tidyterra)
 library(gifski)
 library(stringr) 
+library(purrr)
 prism_set_dl_dir("C:/Users/dsk273/Documents/prism")
 
 
@@ -590,7 +591,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.5) %>% 
          mutate(year_obs = Year) %>% 
@@ -606,7 +607,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_25_cumsum <- nyc_sos_fpred_quercus_25 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_25 <- left_join( nyc_sos_fpred_quercus_25,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_25 <- left_join( nyc_sos_fpred_quercus_25,  nyc_sos_fpred_quercus_25_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.25) %>% 
          mutate(year_obs = Year) %>% 
@@ -622,7 +623,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_75_cumsum <- nyc_sos_fpred_quercus_75 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_75 <- left_join( nyc_sos_fpred_quercus_75,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_75 <- left_join( nyc_sos_fpred_quercus_75,  nyc_sos_fpred_quercus_75_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.75) %>% 
          mutate(year_obs = Year) %>% 
@@ -638,7 +639,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_05_cumsum <- nyc_sos_fpred_quercus_05 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_05 <- left_join( nyc_sos_fpred_quercus_05,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_05 <- left_join( nyc_sos_fpred_quercus_05,  nyc_sos_fpred_quercus_05_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.05) %>% 
          mutate(year_obs = Year) %>% 
@@ -654,7 +655,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_95_cumsum <- nyc_sos_fpred_quercus_95 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_95 <- left_join( nyc_sos_fpred_quercus_95,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_95 <- left_join( nyc_sos_fpred_quercus_95,  nyc_sos_fpred_quercus_95_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.95) %>% 
          mutate(year_obs = Year) %>% 
@@ -694,6 +695,9 @@ for(focal_sp_i in 1:23){
 
  
        
+       
+       
+       
 ### create figure for Quercus for each year
        #days of peak flowering
        oak_spp <- c("Quercus rubra", "Quercus pallustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina")
@@ -708,7 +712,7 @@ for(focal_sp_i in 1:23){
        nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
          select(Year, cum_total)
-       nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_cumsum) %>% 
+       nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.5) %>% 
          mutate(year_obs = Year) %>% 
@@ -812,3 +816,59 @@ for(focal_sp_i in 1:23){
 
  #length(unique(nyc_slength(unique(nyc_slength(unique(nyc_sos$Point_ID))
 
+       
+       
+####
+  nyc_sos_fpred
+  #50 percent peak 
+  nyc_sos_fpred_quercus_50 <- 
+    nyc_sos_fpred %>% 
+    filter(species %in% oak_spp) %>% 
+    group_by(species, Year, focal_perc_0.5) %>% 
+    summarize(total_per_day_at_peak = n()) %>% 
+    mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
+  nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
+    mutate(cum_total = cumulative_number_peaked) %>% 
+    select(Year, cum_total)
+  nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
+    mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
+    rename(doy = focal_perc_0.5) %>% 
+    mutate(year_obs = Year) %>% 
+    filter(year_obs > 2021)
+  
+  pol_NAs_qusp_max <- pol_NAs %>% 
+    filter(taxon == "oak" | is.na(taxon)) %>% 
+    group_by(year_obs) %>% 
+    summarize(pol_yr_pcm_max = max(pol_pcm, na.rm = TRUE))
+  
+  pol_NAs %>% 
+    filter(taxon == "oak" | is.na(taxon)) %>% 
+    left_join(., pol_NAs_qusp_max) %>% 
+    mutate(pol_pcm_prop = pol_pcm / pol_yr_pcm_max) %>% 
+    filter(year_obs > 2019 & year_obs != 2025) %>% 
+    filter(doy < 200) %>% 
+    filter(doy >75) %>% 
+    ggplot() + 
+    geom_point(aes(x = doy, y = pol_pcm_prop)) + 
+    geom_line(aes(x = doy, y = pol_pcm_prop), alpha = 0.5) +
+    facet_wrap(~year_obs, scales = "free_y", ncol = 1) +
+    geom_line(data = nyc_sos_fpred_quercus_50, aes(x = doy, y = cum_prop, color = species)) +
+    # geom_line(data = nyc_sos_fpred_quercus_25, aes(x = doy, y = cum_prop, color = species), lty = 2) +
+    # geom_line(data = nyc_sos_fpred_quercus_75, aes(x = doy, y = cum_prop, color = species), lty = 2) +
+    # geom_line(data = nyc_sos_fpred_quercus_05, aes(x = doy, y = cum_prop, color = species), lty = 3) +
+    # geom_line(data = nyc_sos_fpred_quercus_95, aes(x = doy, y = cum_prop, color = species), lty = 4) +
+    scale_x_continuous(limits = c(100, 150))+
+    ylab("airborne pollen (relative to annual maximum)") +
+    scale_y_continuous(sec.axis = sec_axis(~., name="predicted flowering (cumulative proportion of trees per year)") ) +
+    ggthemes::theme_few()  +
+    theme(
+      axis.line.y.right = element_line(color = "red"),  # Change secondary axis line color
+      axis.text.y.right = element_text(color = "red"),   # Change secondary axis text color
+      axis.title.y.right = element_text(color = "red")
+    ) 
+       
+head(nyc_sos)
+
+nyc_sos %>% filter(species == "Quercus rubra") %>% 
+  filter(R2 > 0.7) %>% 
+  summarize(n=n())

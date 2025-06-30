@@ -62,7 +62,10 @@ itree13_common_genera <- it13 %>%
   summarize(n_per_genus = n(),
             ba_sum_genus = sum(basal_area_m2),
             canopy_cover_genus = sum(canopy_cover_m2)) #%>% arrange(-n_per_species) %>%  top_n(15)
-it13 <- left_join(it13, itree13_common_genera)
+it13 <- left_join(it13, itree13_common_genera) #mean(it13$leaf_area_index)
+
+test <- it13 %>% group_by(species_name) %>% summarize(conopy_cover_area_sum = sum(canopy_cover_ft_2),
+                                                      nobs = n()) %>% arrange(-nobs)
 
 #weighted mean of LAI per canopy cover
 test <- 
