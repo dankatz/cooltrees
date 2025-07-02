@@ -60,10 +60,11 @@ nyc_sos_percentile_sp_yr <- nyc_sos %>%
     filter(ntrees > 10) #exclude species with few good individuals
 
 ## species that are available from npn
-table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250613_weights_without_D.csv")
+table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250702_weights_without_D.csv")
  npn_species_available <- table_lf_all %>% filter(nobs > 10) %>% filter(!is.na(lf_dif_pred_nyc_2024_mean )) %>% 
    mutate(species = paste(genus, species),
-          nobs_npn = nobs) %>%  select(species, nobs_npn) %>% arrange(species)#to match the nyc_sos format
+          nobs_npn = nobs) %>%  
+   dplyr::select(species, nobs_npn) %>% arrange(species)#to match the nyc_sos format
 
 #species represented in both nyc_sos and npn data
  nyc_npn_species_list <- left_join(nyc_sos_species_list, npn_species_available) %>% 
@@ -71,10 +72,10 @@ table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower
    arrange(-ntrees) %>% 
    filter(nobs_npn > 10) 
 
-#species with problems: Quercus phellos, Populus grandidentata
+#species with problems: Populus tremuloides #Quercus phellos, Populus grandidentata
  
 #start species loop
-for(focal_sp_i in 1:23){
+for(focal_sp_i in 21:23){
   
   #inputs for loop
   focal_genus <- nyc_npn_species_list$genus[focal_sp_i] #focal_genus <-"Quercus"
@@ -151,9 +152,12 @@ for(focal_sp_i in 1:23){
       #create predictions for prediction intervals spanning from 0% to 99% of prediction interval
       nyc_sos_focal_sp_sub <- nyc_sos_focal_sp %>% #slice(nyc_sos_focal_sp, 1:200) %>% 
         #filter(Point_ID == 2542070) %>% 
-        select(Point_ID, species, 
+        dplyr::select(Point_ID, species, 
                Year, leaf_mean,
-               latitude, t_month_1, t_month_2, t_month_3, t_month_4, elevation_in_meters)
+               latitude, t_month_1, t_month_2, t_month_3, t_month_4, elevation_in_meters) %>% 
+        rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>% ungroup() #create all spring temp var
+      
+      
       
       flow_dif_preds_nyc_list_j <- list()
       pred_levels <- seq(0, 0.99, by = 0.01)
@@ -192,7 +196,7 @@ for(focal_sp_i in 1:23){
         arrange(Point_ID, Year, difup_num) %>% 
         mutate(dif_lf_day = round(fit) + difup_num + 1, #shifting the whole curve back again 
                doy = leaf_mean + dif_lf_day ) %>%  
-        select(Point_ID, species, Year, doy, leaf_mean, fit, dif_lf_day, prop_in_day) %>% 
+        dplyr::select(Point_ID, species, Year, doy, leaf_mean, fit, dif_lf_day, prop_in_day) %>% 
         mutate(obs_date = as.Date(doy - 1, paste0(Year, "-01-01")))
       
       #normalizing by annual totals
@@ -216,7 +220,7 @@ for(focal_sp_i in 1:23){
         mutate(dif_05 = abs(sum_flowpred - focal_percentile)) %>% 
         slice_min(dif_05, with_ties = FALSE) %>% 
         ungroup() %>% 
-        select(doy) %>% 
+        dplyr::select(doy) %>% 
         rename_with(.cols = 1, ~paste0("focal_perc_", focal_percentile))
       return(pred_level_extraction_x)
       }
@@ -227,7 +231,7 @@ for(focal_sp_i in 1:23){
       #add metadata to predictions      
         nyc_sos_focal_sp_sub_fpred <-
           flow_dif_preds_nyc_v3 %>% 
-          select(Point_ID, species, Year, leaf_mean, fit) %>%
+          dplyr::select(Point_ID, species, Year, leaf_mean, fit) %>%
           distinct() %>% 
           bind_cols(., pred_cols_raw)
       
@@ -399,7 +403,8 @@ for(focal_sp_i in 1:23){
         geom_sf(data = flow_dif_preds_nyc_peak_date_sf, color = "gray", size = 0.5, alpha = 0.25) + 
           annotation_scale(location = "br")   # annotation_north_arrow(location = "tl") 
        
-      map_max_title <- paste0(output_directory,
+  
+      map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_maps/",
                                 "/map_max_", focal_genus,"_", focal_species, "_", focal_year_i, ".png")
       ggsave(filename = map_max_title, plot = map_max, units = "px", width = 3000, height = 2000)
         
@@ -424,7 +429,7 @@ for(focal_sp_i in 1:23){
  nyc_sos_fpred <- nyc_sos %>% 
    filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
    filter(n_SOS_50_7day > 0) %>% #removing trees that didn't have at least one image within a week of sos50
-   select(Point_ID, species, Year, Lon, Lat, Height, Radius, dbh, tpstructur, tpconditio, riskrating, 
+   dplyr::select(Point_ID, species, Year, Lon, Lat, Height, Radius, dbh, tpstructur, tpconditio, riskrating, 
           SOS_50, SOS_20, SOS_80, n_SOS_50_7day, n_SOS_50_14day,
           R2, RMSE) %>% 
       left_join(., nyc_fpred)
@@ -438,8 +443,8 @@ for(focal_sp_i in 1:23){
  table3 <- nyc_sos_fpred %>% 
    group_by(species, Year) %>% 
    summarize(nobs = n(),
-             flowmax_mean = round(mean(focal_perc_0.5), 0),
-             leafmax_mean = round(mean(leaf_mean), 0)
+             flowmax_mean = round(mean(focal_perc_0.5, na.rm = TRUE), 0),
+             leafmax_mean = round(mean(leaf_mean, na.rm = TRUE), 0)
              ) %>% 
    pivot_wider(id_cols = species, names_from = c(Year), values_from = c(flowmax_mean, leafmax_mean, nobs)) %>% 
    rowwise() %>% 
@@ -452,7 +457,8 @@ for(focal_sp_i in 1:23){
           y2023 = paste0(flowmax_mean_2023, " -", leafmax_mean_2023, " (", nobs_2023, " )"),
           y2024 = paste0(flowmax_mean_2024, " -", leafmax_mean_2024, " (", nobs_2024, " )"),
           ) %>% 
-   select(species, contains("y2"))
+   filter(!is.na(flowmax_mean_2023) ) %>% 
+   dplyr::select(species, contains("y2"))
  
  
  
@@ -532,6 +538,88 @@ for(focal_sp_i in 1:23){
  ggsave(filename = map_max_title, plot = fig3_map_flowmax_anomo, units = "px", width = 3000, height = 5000)
  
 
+ ### Fig 4: map of Quercus species Fmax in nyc, one panel per year ############################
+ focal_year_i <- 2023
+ 
+ #load in nyc boundary polygon
+ nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+   st_union() #combine the different boroughs
+ nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= crs(nyc_boundary))
+ nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
+
+ oak_spp <- c("Quercus alba", "Quercus falcata", "Quercus macrocarpa", "Quercus palustris", "Quercus rubra",  "Quercus velutina")
+ flow_preds_nyc_peak_date_sf <- 
+   nyc_sos_fpred %>% 
+   filter(species %in% oak_spp) %>%  #make sure to leave a space
+   #filter(species %in% str_subset(unique(nyc_sos_fpred$species), "Quercus ")) %>%  #make sure to leave a space
+   filter(Year == focal_year_i) %>% 
+   dplyr::select(Point_ID, species, Lon, Lat, Year, focal_perc_0.5) %>% 
+   mutate(date_for_map = as.Date(focal_perc_0.5, origin = "2024-01-01")) %>% 
+   st_as_sf(coords = c( "Lon", "Lat"), crs = 4326)
+ 
+
+ # create map
+ fig4_map_flowmax <- 
+   ggplot() + ggthemes::theme_few() +   
+   theme(panel.background = element_rect(fill='gray94', color = NA), strip.text = element_text(face = "italic")) + 
+   #geom_spatraster(data = flow_peak_rast) + 
+   #scale_fill_distiller(palette = "Spectral", na.value = "gray94", name = "peak flowering (day)") +
+   geom_sf(data = nyc_boundary_invert, fill = "gray94", color = "gray94") +  #
+   geom_sf(data = nyc_boundary, fill = "white", color = "black") +
+   geom_sf(data = flow_preds_nyc_peak_date_sf, aes(color = date_for_map), size = 0.8, alpha = 0.9) + 
+   scale_color_gradient2(low = "springgreen4", mid = "yellow2", high = "orangered",
+                         midpoint = 19840, name = "day of year", trans = "date", na.value = NA) +
+   # scale_color_gradient2(low = "blue", mid = "gold", high = "red", midpoint = 19840, name = "day of year", trans = "date",
+   #                       na.value = NA) +
+   annotation_scale(location = "br") +  # annotation_north_arrow(location = "tl") 
+   facet_wrap(~species, nrow = 3)
+ 
+ map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/fig_4_Quercus_spp_flow_max.png")
+ ggsave(filename = map_max_title, plot = fig4_map_flowmax, units = "px", width = 3000, height = 5000)
+ 
+ 
+ 
+ ### Fig x: map of various Acer species Fmax in nyc, shown in one year ############################
+ focal_year_i <- 2022
+ 
+ #load in nyc boundary polygon
+ nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+   st_union() #combine the different boroughs
+ nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= crs(nyc_boundary))
+ nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
+ 
+ acer_spp <- c("Acer rubrum", "Acer platanoides", "Acer saccharum", "Acer saccharinum", "Acer negundo")
+ flow_preds_nyc_peak_date_sf <- 
+   nyc_sos_fpred %>% 
+   filter(species %in% acer_spp) %>%  #make sure to leave a space
+   #filter(species %in% str_subset(unique(nyc_sos_fpred$species), "Acer ")) %>%  #make sure to leave a space
+   filter(Year == focal_year_i) %>% 
+   dplyr::select(Point_ID, species, Lon, Lat, Year, focal_perc_0.5) %>% 
+   mutate(date_for_map = as.Date(focal_perc_0.5, origin = "2024-01-01")) %>% 
+   st_as_sf(coords = c( "Lon", "Lat"), crs = 4326)
+ 
+ 
+ # create map
+ figx_map_flowmax <- 
+   ggplot() + ggthemes::theme_few() +   
+   theme(panel.background = element_rect(fill='gray94', color = NA), strip.text = element_text(face = "italic")) + 
+   #geom_spatraster(data = flow_peak_rast) + 
+   #scale_fill_distiller(palette = "Spectral", na.value = "gray94", name = "peak flowering (day)") +
+   geom_sf(data = nyc_boundary_invert, fill = "gray94", color = "gray94") +  #
+   geom_sf(data = nyc_boundary, fill = "white", color = "black") +
+   geom_sf(data = flow_preds_nyc_peak_date_sf, aes(color = date_for_map), size = 0.8, alpha = 0.9) + 
+   scale_color_gradient2(low = "springgreen4", mid = "yellow2", high = "orangered",
+                         midpoint = 19820, name = "day of year", trans = "date", na.value = NA) +
+   # scale_color_gradient2(low = "blue", mid = "gold", high = "red", midpoint = 19840, name = "day of year", trans = "date",
+   #                       na.value = NA) +
+   annotation_scale(location = "br") +  # annotation_north_arrow(location = "tl") 
+   facet_wrap(~species, nrow = 3)
+ 
+ map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/fig_x_Acer_spp_flow_max.png")
+ ggsave(filename = map_max_title, plot = figx_map_flowmax, units = "px", width = 3000, height = 5000)
+ 
+ 
+ 
  
  #### SI section: comparison to airborne pollen concentrations ###############################################
  #Lincoln Center from Guy Robinson
@@ -544,7 +632,7 @@ for(focal_sp_i in 1:23){
        t() %>% 
        as_tibble() %>% 
        `colnames<-`(c("date_obs", "p_tot", "nothing", "perc_by_taxa")) %>% 
-       select(-nothing) 
+       dplyr::select(-nothing) 
     
      pol_entry_list <- list()
      
@@ -557,7 +645,7 @@ for(focal_sp_i in 1:23){
               pol_perc = parse_number(entry1),
               pol_perc = case_when(entry1 == "No Pollen" ~ 0, .default = pol_perc),
               pol_pcm = p_total * (pol_perc/100) ) %>% 
-       select(date_obs, taxon, pol_pcm) %>% 
+       dplyr::select(date_obs, taxon, pol_pcm) %>% 
        filter(!is.na(taxon)) %>% 
        filter(taxon != "")
      pol_entry_list[[i]] <- pol_entry_i
@@ -570,7 +658,7 @@ for(focal_sp_i in 1:23){
               doy = yday(date_obs))
      
      #adding in rows for missing dates
-     date_obs <- data.frame(date_obs = seq(ymd('2022-01-01'),ymd('2024-12-31'), by = '1 day'))
+     date_obs <- data.frame(date_obs = seq(ymd('2022-01-01'),ymd('2025-06-15'), by = '1 day'))
      pol_NAs <-  left_join(date_obs, pol) 
 
     #amount of pollen by each taxon
@@ -578,7 +666,8 @@ for(focal_sp_i in 1:23){
      
  #create figure for a genus for each year #  sort(unique(nyc_sos_fpred$species))
        #days of peak flowering
-       oak_spp <- c("Quercus rubra", "Quercus pallustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina")
+       oak_spp <- c("Quercus rubra", "Quercus palustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina", "Quercus falcata",
+                    "Quercus phellos")
        maple_spp <- c("Acer","Acer rubrum", "Acer saccharum", "Acer saccharinum", "Acer negundo", "Acer platanoides")
          
       #50 percent peak 
@@ -590,7 +679,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.5) %>% 
@@ -606,7 +695,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_25_cumsum <- nyc_sos_fpred_quercus_25 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_25 <- left_join( nyc_sos_fpred_quercus_25,  nyc_sos_fpred_quercus_25_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.25) %>% 
@@ -622,7 +711,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_75_cumsum <- nyc_sos_fpred_quercus_75 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_75 <- left_join( nyc_sos_fpred_quercus_75,  nyc_sos_fpred_quercus_75_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.75) %>% 
@@ -638,7 +727,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_05_cumsum <- nyc_sos_fpred_quercus_05 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_05 <- left_join( nyc_sos_fpred_quercus_05,  nyc_sos_fpred_quercus_05_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.05) %>% 
@@ -654,7 +743,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_95_cumsum <- nyc_sos_fpred_quercus_95 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_95 <- left_join( nyc_sos_fpred_quercus_95,  nyc_sos_fpred_quercus_95_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.95) %>% 
@@ -671,7 +760,7 @@ for(focal_sp_i in 1:23){
          filter(taxon == "oak" | is.na(taxon)) %>% 
          left_join(., pol_NAs_qusp_max) %>% 
          mutate(pol_pcm_prop = pol_pcm / pol_yr_pcm_max) %>% 
-          filter(year_obs > 2019 & year_obs != 2025) %>% 
+          filter(year_obs > 2019 ) %>% 
          filter(doy < 200) %>% 
          filter(doy >75) %>% 
        ggplot() + 
@@ -700,7 +789,7 @@ for(focal_sp_i in 1:23){
        
 ### create figure for Quercus for each year
        #days of peak flowering
-       oak_spp <- c("Quercus rubra", "Quercus pallustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina")
+       #oak_spp <- c("Quercus rubra", "Quercus pallustris", "Quercus alba", "Quercus macrocarpa", "Quercus velutina")
       
       #50 percent peak 
         nyc_sos_fpred_quercus_50 <- 
@@ -711,7 +800,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.5) %>% 
@@ -727,7 +816,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_25_cumsum <- nyc_sos_fpred_quercus_25 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_25 <- left_join( nyc_sos_fpred_quercus_25,  nyc_sos_fpred_quercus_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.25) %>% 
@@ -743,7 +832,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_75_cumsum <- nyc_sos_fpred_quercus_75 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_75 <- left_join( nyc_sos_fpred_quercus_75,  nyc_sos_fpred_quercus_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.75) %>% 
@@ -759,7 +848,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_05_cumsum <- nyc_sos_fpred_quercus_05 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_05 <- left_join( nyc_sos_fpred_quercus_05,  nyc_sos_fpred_quercus_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.05) %>% 
@@ -775,7 +864,7 @@ for(focal_sp_i in 1:23){
          mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
        nyc_sos_fpred_quercus_95_cumsum <- nyc_sos_fpred_quercus_95 %>% slice_max(cumulative_number_peaked) %>% 
          mutate(cum_total = cumulative_number_peaked) %>% 
-         select(Year, cum_total)
+         dplyr::select(Year, cum_total)
        nyc_sos_fpred_quercus_95 <- left_join( nyc_sos_fpred_quercus_95,  nyc_sos_fpred_quercus_cumsum) %>% 
          mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
          rename(doy = focal_perc_0.95) %>% 
@@ -818,7 +907,7 @@ for(focal_sp_i in 1:23){
 
        
        
-####
+### figure SI X: comparing flowering times for different oak species vs airborne pollen #################
   nyc_sos_fpred
   #50 percent peak 
   nyc_sos_fpred_quercus_50 <- 
@@ -829,7 +918,7 @@ for(focal_sp_i in 1:23){
     mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
   nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
     mutate(cum_total = cumulative_number_peaked) %>% 
-    select(Year, cum_total)
+    dplyr::select(Year, cum_total)
   nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
     mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
     rename(doy = focal_perc_0.5) %>% 
@@ -867,9 +956,60 @@ for(focal_sp_i in 1:23){
       axis.title.y.right = element_text(color = "red")
     ) 
        
-head(nyc_sos)
 
-nyc_sos %>% #filter(species == "Quercus rubra") %>% 
-  filter(R2 > 0.7) %>% 
-  group_by(Poly_ID) %>% 
-  summarize(n=n())
+  
+  
+  
+### figure SI X: comparing flowering times for different oak species vs airborne pollen #################
+  focal_genus_common <- "oak"
+  #focal_genus_spp <- str_subset(unique(nyc_sos_fpred$species), "Quercus ") #make sure to leave a space
+  focal_genus_spp <- oak_spp  
+  
+    nyc_sos_fpred
+  #50 percent peak 
+  nyc_sos_fpred_quercus_50 <- 
+    nyc_sos_fpred %>% 
+    filter(species %in% focal_genus_spp) %>% 
+    group_by(species, Year, focal_perc_0.5) %>% 
+    summarize(total_per_day_at_peak = n()) %>% 
+    mutate(cumulative_number_peaked = cumsum(total_per_day_at_peak)) 
+  nyc_sos_fpred_quercus_50_cumsum <- nyc_sos_fpred_quercus_50 %>% slice_max(cumulative_number_peaked) %>% 
+    mutate(cum_total = cumulative_number_peaked) %>% 
+    dplyr::select(Year, cum_total)
+  nyc_sos_fpred_quercus_50 <- left_join( nyc_sos_fpred_quercus_50,  nyc_sos_fpred_quercus_50_cumsum) %>% 
+    mutate(cum_prop = cumulative_number_peaked/cum_total) %>% 
+    rename(doy = focal_perc_0.5) %>% 
+    mutate(year_obs = Year) %>% 
+    filter(year_obs > 2016)
+  
+  pol_NAs_qusp_max <- pol_NAs %>% 
+    filter(taxon == focal_genus_common | is.na(taxon)) %>% 
+    group_by(year_obs) %>% 
+    summarize(pol_yr_pcm_max = max(pol_pcm, na.rm = TRUE))
+  
+  pol_NAs %>% 
+    filter(taxon == focal_genus_common | is.na(taxon)) %>% 
+    left_join(., pol_NAs_qusp_max) %>% 
+    mutate(pol_pcm_prop = pol_pcm / pol_yr_pcm_max) %>% 
+    filter(year_obs > 2016 ) %>% 
+    filter(doy < 200) %>% 
+    filter(doy >75) %>% 
+    ggplot() + 
+    geom_point(aes(x = doy, y = pol_pcm_prop)) + 
+    geom_line(aes(x = doy, y = pol_pcm_prop), alpha = 0.5) +
+    facet_wrap(~year_obs, scales = "free_y", ncol = 1) +
+    geom_line(data = nyc_sos_fpred_quercus_50, aes(x = doy, y = cum_prop, color = species)) +
+    # geom_line(data = nyc_sos_fpred_quercus_25, aes(x = doy, y = cum_prop, color = species), lty = 2) +
+    # geom_line(data = nyc_sos_fpred_quercus_75, aes(x = doy, y = cum_prop, color = species), lty = 2) +
+    # geom_line(data = nyc_sos_fpred_quercus_05, aes(x = doy, y = cum_prop, color = species), lty = 3) +
+    # geom_line(data = nyc_sos_fpred_quercus_95, aes(x = doy, y = cum_prop, color = species), lty = 4) +
+    scale_x_continuous(limits = c(100, 150))+
+    ylab("airborne pollen (relative to annual maximum)") +
+    scale_y_continuous(sec.axis = sec_axis(~., name="predicted flowering (cumulative proportion of trees per year)") ) +
+    ggthemes::theme_few()  +
+    theme(
+      axis.line.y.right = element_line(color = "darkred"),  # Change secondary axis line color
+      axis.text.y.right = element_text(color = "darkred"),   # Change secondary axis text color
+      axis.title.y.right = element_text(color = "darkred")
+    ) 
+  

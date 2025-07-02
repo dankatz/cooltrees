@@ -758,7 +758,7 @@ for(focal_sp_i in 1:32){
 ### combine individual rows from each species into a single dataframe
   table_si_all <- bind_rows(table_si_all_list)
   write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250702_weights_without_D.csv")
- # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250611.csv")
+ # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250702_weights_without_D.csv")
   
   table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
   write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250702_weights_without_D.csv")
