@@ -114,6 +114,7 @@
       
     npn_direct <- left_join(npn_direct, obs_per_observer)
 
+    #length(unique(npn_direct$species_id))
     # assess an individual observer
     # test <- npn_direct %>% 
     #   filter(observedby_person_id == "2002") %>% 
@@ -171,8 +172,9 @@
  ## join leaf expansion and flowering and retain observations that have both
   lf <- left_join(indiv_leafout, indiv_flow_join) %>% 
         filter(!is.na(flow_mean)) 
-
-
+  # length(unique(lf$observedby_person_id))
+  # length(unique(lf$individual_id))
+  
   ### calculate the average date of pollen release for each individual in each year
     indiv_pol_release <- npn_direct %>% filter(phenophase_id == 502) %>%
       filter(phenophase_status == 1) %>%
@@ -539,10 +541,10 @@
            !(genus == "Salix" & species == "bebbiana") #too few observations
             ) #%>% print(n = 40)
     
-  #loading in the nyc data to get median leaf out date per species for nyc in 2024 for table 1
-    #this file was generated in the script "NYC_tree_flow.R"
-    nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
-
+  # #loading in the nyc data to get median leaf out date per species for nyc in 2024 for table 1
+  #   #this file was generated in the script "NYC_tree_flow.R"
+  #   nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
+  # 
 
 
 ## start species loop
@@ -550,7 +552,7 @@
     table_lf_all_list <- list()
     table_si_all_list <- list()
     
-for(focal_sp_i in 1:32){
+for(focal_sp_i in 30:32){
 
   #inputs for loop
     focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
@@ -565,7 +567,7 @@ for(focal_sp_i in 1:32){
    
   #fit a robust regression using the MM estimator
     #lmrob.control(setting="KS2014") 
-    mmfit_leaf <- lmrob(leaf_mean ~  t_month_1 + t_month_2 + t_month_3 + t_month_4 + 
+    mmfit_leaf <- lmrob(leaf_mean ~  t_month_1_4 + # + t_month_2 + t_month_3 + t_month_4 + 
                           latitude , 
                    data = ds_leaf, method = "MM") # #summary(mmfit_leaf)
       # ggplot(ds_leaf, aes(x = latitude, y = t_month_2)) + geom_point() + theme_bw()
@@ -573,11 +575,11 @@ for(focal_sp_i in 1:32){
       # summary(mmfit_leaf)
       # hist(mmfit_leaf$rweights)
     
-        #if the model doesn't converge, use average spring temperature instead
-        focal_fit_spring_temp_leaf <- lmrob(leaf_mean ~ t_month_1_4 + latitude ,
-                                            data = ds_leaf, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
-        model_temper_param_leaf <- focal_fit_spring_temp_leaf$converged
-        if(model_temper_param_leaf == FALSE){mmfit_leaf <- focal_fit_spring_temp_leaf}
+        # #if the model doesn't converge, use average spring temperature instead
+        # focal_fit_spring_temp_leaf <- lmrob(leaf_mean ~ t_month_1_4 + latitude ,
+        #                                     data = ds_leaf, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
+        # model_temper_param_leaf <- focal_fit_spring_temp_leaf$converged
+        # if(model_temper_param_leaf == FALSE){mmfit_leaf <- focal_fit_spring_temp_leaf}
   
   #extract the weights and residuals from the lmrob and join them back to the leaf data
     ds2_leaf <- ds_leaf %>% mutate(weights_leaf = mmfit_leaf$rweights, 
@@ -591,14 +593,15 @@ for(focal_sp_i in 1:32){
               filter(genus == focal_genus, species == focal_species) %>% filter(!is.na(t_month_1)) #%>% filter(gdd > 0) #ggplot(ds, aes(x = gdd, y = leaf_mean)) + geom_point() + theme_bw()
 
   #fit a robust regression using the MM estimator
-    mmfit_flow <- lmrob(flow_mean ~  t_month_1 + t_month_2 + t_month_3 + t_month_4 + latitude ,
+    mmfit_flow <- lmrob(flow_mean ~  t_month_1_4 + #t_month_2 + t_month_3 + t_month_4 + 
+                          latitude ,
                       data = ds_flow, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
 
-      #if the model doesn't converge, use average spring temperature instead
-      focal_fit_spring_temp_flow <- lmrob(flow_mean ~ t_month_1_4 + latitude ,
-                                          data = ds_flow, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
-      model_temper_param_flow <- focal_fit_spring_temp_flow$converged
-      if(model_temper_param_flow == FALSE){mmfit_flow <- focal_fit_spring_temp_flow}
+      # #if the model doesn't converge, use average spring temperature instead
+      # focal_fit_spring_temp_flow <- lmrob(flow_mean ~ t_month_1_4 + latitude ,
+      #                                     data = ds_flow, method = "MM") #+ t_month_2 #summary(mmfit_leaf)
+      # model_temper_param_flow <- focal_fit_spring_temp_flow$converged
+      # if(model_temper_param_flow == FALSE){mmfit_flow <- focal_fit_spring_temp_flow}
     
     
   #passing off the weights and residuals from the lmrob
@@ -651,18 +654,19 @@ for(focal_sp_i in 1:32){
   ds4 <- ds3  %>% filter(!is.na(t_month_1)) %>% 
           rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>% ungroup() #create all spring temp var
 
-  focal_fit <- lmrob(dif_leaf_flow ~ leaf_mean 
-            + t_month_1 + t_month_2 + t_month_3 + t_month_4 +  elevation_in_meters + latitude 
+  focal_fit <- lmrob(dif_leaf_flow ~ leaf_mean +
+            t_month_1_4 + # + t_month_2 + t_month_3 + t_month_4 +  
+            elevation_in_meters + latitude 
             , data = ds4, weights = weights_leaf)
   #summary(focal_fit)
   
-      #if the model doesn't converge, use the average spring temperature instead
-      focal_fit_spring_temp <- lmrob(dif_leaf_flow ~ leaf_mean 
-                         + t_month_1_4 +  elevation_in_meters + latitude 
-                         , data = ds4, weights = weights_leaf)
-      
-      model_temper_param <- focal_fit$converged
-      if(model_temper_param == FALSE){focal_fit <- focal_fit_spring_temp}
+      # #if the model doesn't converge, use the average spring temperature instead
+      # focal_fit_spring_temp <- lmrob(dif_leaf_flow ~ leaf_mean 
+      #                    + t_month_1_4 +  elevation_in_meters + latitude 
+      #                    , data = ds4, weights = weights_leaf)
+      # 
+      # model_temper_param <- focal_fit$converged
+      # if(model_temper_param == FALSE){focal_fit <- focal_fit_spring_temp}
   
     ## save the species model for use in the NYC_tree_flow.R script
       write_rds(focal_fit, paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "NPN_model_",
@@ -726,6 +730,7 @@ for(focal_sp_i in 1:32){
                          lf_dif_global_emp_mean = round(mean(ds5$dif_leaf_flow), 3),
                          lf_dif_gloab_emp_p25 = round(quantile(ds5$dif_leaf_flow, 0.25), 3),
                          lf_dif_gloab_emp_p75 = round(quantile(ds5$dif_leaf_flow, 0.75), 3),
+                         lf_dif_r2 = round(summary(focal_fit)$r.squared, 2),
                          lf_dif_pred_nyc_2024_mean = round(flow_dif_preds_nyc$fit[1], 2),
                          lf_dif_pred_nyc_2024_p25 = round(flow_dif_preds_nyc$fit[,2], 2), 
                          lf_dif_pred_nyc_2024_p75 = round(flow_dif_preds_nyc$fit[,3], 2))
@@ -757,11 +762,11 @@ for(focal_sp_i in 1:32){
 
 ### combine individual rows from each species into a single dataframe
   table_si_all <- bind_rows(table_si_all_list)
-  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250702_weights_without_D.csv")
+  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250708_weights_without_D.csv")
  # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250702_weights_without_D.csv")
   
   table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
-  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250702_weights_without_D.csv")
+  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250708_weights_without_D.csv")
   
   
 
