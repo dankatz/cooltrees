@@ -128,12 +128,12 @@
     filter(day_of_year < 173) %>%  #solstice
     group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
     slice(which.min(abs(intensity_p - 0.5))) %>% #select the observation with the highest intensity
-    filter(intensity_p > 0.2 & intensity_p < 0.8) # select observations with high proportion of leaves that are expanding
+    filter(intensity_p > 0.24 & intensity_p < 0.75) # select observations with high proportion of leaves that are expanding
   
   indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
     filter(phenophase_status == 1) %>% 
     filter(day_of_year < 173) %>%  #solstice
-    filter(intensity_p > 0.2 & intensity_p < 0.8) %>% 
+    filter(intensity_p > 0.24 & intensity_p < 0.75) %>% 
     group_by(genus, species, individual_id, year_obs) %>% 
     summarize(leaf_mean = mean(day_of_year),
               leaf_early = min(day_of_year),
@@ -149,14 +149,14 @@
       filter(phenophase_status == 1) %>% 
       filter(day_of_year < 173) %>%  #solstice
       group_by(genus, species, latitude, longitude, individual_id, year_obs) %>% 
-      slice(which.min(abs(intensity_p - 0.5))) %>% 
-      filter(intensity_p > 0.2) #"what percentage of all fresh flowers on the plant are open?"
+      slice(which.min(abs(intensity_p - 1))) %>% 
+      filter(intensity_p > 0.24) #"what percentage of all fresh flowers on the plant are open?"
     
     indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
       filter(phenophase_status == 1) %>% 
       filter(day_of_year < 173) %>%  #solstice
       group_by(genus, species, individual_id, year_obs) %>% 
-      filter(intensity_p > 0.2) %>% 
+      filter(intensity_p > 0.24) %>% 
       summarize(flow_mean = mean(day_of_year),
                 flow_early = min(day_of_year),
                 flow_late = max(day_of_year),
@@ -370,7 +370,7 @@
     lfp <- left_join(lf, indiv_pol_release)
     
     
-    #write_csv(lfp, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250702.csv")
+    #write_csv(lfp, "C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250709.csv")
     #lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250702.csv")
 
 
@@ -381,11 +381,11 @@
       filter(phenophase_status == 1) %>% 
       group_by(genus, species, individual_id, year_obs) %>% 
       slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
-      filter(intensity_p > 0.2 & intensity_p < 0.8)
+      filter(intensity_p > 0.24 & intensity_p < 0.76)
     
     indiv_leafout_summary <- npn_direct %>% filter(phenophase_id == 467) %>% 
       filter(phenophase_status == 1) %>% 
-      filter(intensity_p > 0.2 & intensity_p < 0.8) %>% 
+      filter(intensity_p > 0.24 & intensity_p < 0.76) %>% 
       group_by(genus, species, individual_id, year_obs) %>% 
       summarize(leaf_mean = mean(day_of_year),
                 leaf_early = min(day_of_year),
@@ -398,9 +398,9 @@
     indiv_leafout <- left_join(indiv_leafout_peak, indiv_leafout_summary) %>% 
       filter(n_obs_per_person > 10) %>%  #remove observers that took fewer than 10 observations
       filter(leafout_duration < 15) %>% #remove observations that had leaf out duration of > 2 weeks 
-      filter(leaf_late < 173) %>%  #observations where leaf out occured after the solstice
+      filter(leaf_late < 173) %>%  #observations where leaf out occurred after the solstice
        mutate(year_obs = year(observation_date),
-             too_recent = case_when(year_obs == 2025 & leaf_mean > 150 ~ "too recent",
+             too_recent = case_when(year_obs == 2025 & leaf_mean > 170 ~ "too recent",
                                     TRUE ~ "not too recent")) %>% 
       filter(too_recent == "not too recent") %>% #removing observations from this month (NPN has more recent data than PRISM)
       dplyr::select(genus, species, 
@@ -444,8 +444,8 @@
     indiv_leafout_t <- left_join(indiv_leafout, t_data_all_years_months) %>% 
     rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>% ungroup() #create all spring temp var
     
-    #write_csv(indiv_leafout_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250702.csv")
-    #indiv_leafout_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250702.csv")
+    #write_csv(indiv_leafout_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250709.csv")
+    #indiv_leafout_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250709.csv")
        
 
 ### get temperature for indiv_flow for finding outliers ########################################################
@@ -453,12 +453,12 @@
       indiv_flow_peak <- npn_direct %>% filter(phenophase_id == 501) %>% 
         filter(phenophase_status == 1) %>% 
         group_by(genus, species, individual_id, year_obs) %>% 
-        slice(which.min(abs(intensity_p - 0.5))) %>% #select the observations that are closest to mid-leaf expansion
-        filter(intensity_p > 0.2 ) #"what percentage of all fresh flowers on the plant are open?"
+        slice(which.min(abs(intensity_p - 1))) %>% #select the observations that are closest to mid-leaf expansion
+        filter(intensity_p > 0.24 ) #"what percentage of all fresh flowers on the plant are open?"
       
       indiv_flow_summary <- npn_direct %>% filter(phenophase_id == 501) %>% 
         filter(phenophase_status == 1) %>% 
-        filter(intensity_p > 0.2 ) %>% 
+        filter(intensity_p > 0.24 ) %>% 
         group_by(genus, species, individual_id, year_obs) %>% 
         summarize(flow_mean = mean(day_of_year),
                   flow_early = min(day_of_year),
@@ -471,9 +471,9 @@
       indiv_flow <- left_join(indiv_flow_peak, indiv_flow_summary) %>% 
         filter(n_obs_per_person > 10) %>% 
         filter(flow_duration < 15) %>% 
-        #filter(flow_late < 173) %>%  #solstice
+        filter(flow_late < 173) %>%  #solstice
         mutate(year_obs = year(observation_date),
-               too_recent = case_when(year_obs == 2025 & flow_mean > 120 ~ "too recent",
+               too_recent = case_when(year_obs == 2025 & flow_mean > 170 ~ "too recent",
                                       TRUE ~ "not too recent")) %>% 
         filter(too_recent == "not too recent") %>% #removing observations from this month
         dplyr::select(genus, species, 
@@ -517,15 +517,15 @@
      indiv_flow_t <- left_join(indiv_flow, t_data_all_years_months) %>% 
        rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>% ungroup() #create all spring temp var
      
-     #write_csv(indiv_flow_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250702.csv")
-     #indiv_flow_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250702.csv")
+     #write_csv(indiv_flow_t, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250709.csv")
+     #indiv_flow_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250709.csv")
  
      
 ### analyze the difference between leaf out and flowering for each species and create tables and figures in a loop ################
   #load in required datasets for this portion of the script
-     lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250702.csv")
-     indiv_flow_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250702.csv")
-     indiv_leafout_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250702.csv")
+     lfp <- read_csv("C:/Users/dsk273/Box/NYC projects/NYC flowering and leaf phenology spring 25/npn_lfp_250709.csv")
+     indiv_flow_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_flow_t_250709.csv")
+     indiv_leafout_t <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/indiv_leafout_t_250709.csv")
      
      
     ## which species to include from npn
@@ -539,12 +539,11 @@
            !(genus == "Gleditsia" & species == "triacanthos"),  #only 10 observations with both leaf and flowering
            !(genus == "Quercus" & species == "stellata"),  #too few observations
            !(genus == "Salix" & species == "bebbiana") #too few observations
-            ) #%>% print(n = 40)
+            ) #%>% print(n = 40) #sum(npn_species_to_analyze$n)
     
   # #loading in the nyc data to get median leaf out date per species for nyc in 2024 for table 1
   #   #this file was generated in the script "NYC_tree_flow.R"
   #   nyc_sos_summary <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_sp_summary_sos50_2024.csv")
-  # 
 
 
 ## start species loop
@@ -552,9 +551,9 @@
     table_lf_all_list <- list()
     table_si_all_list <- list()
     
-for(focal_sp_i in 30:32){
+for(focal_sp_i in 28:28){ # print(npn_species_to_analyze, n = 40)
 
-  #inputs for loop
+  #inputs for loop 
     focal_genus <- npn_species_to_analyze$genus[focal_sp_i] #focal_genus <-"Quercus"
     focal_species <- npn_species_to_analyze$species[focal_sp_i] #focal_species <-"rubra"
     print(paste(focal_genus, focal_species, focal_sp_i))
@@ -631,33 +630,39 @@ for(focal_sp_i in 30:32){
              weights_flow = 1,
              dif_leaf_flow = flow_mean - leaf_mean )
     
-    ds3 <- bind_rows(ds3, d_leafflowmax_join)
+   # ds3 <- bind_rows(ds3, d_leafflowmax_join)
       
+   
+    
+  #calculate additional variables
+  ds4 <- ds3  %>% filter(!is.na(t_month_1)) %>% 
+          rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>%  #create all spring temp var
+          mutate(weights_lf = min(weights_leaf, weights_flow)) %>% ungroup() 
+    
   ## visualize outliers of flowers or leaves vs temperatures and save figure
-    flow_leaf_outliers_plot <- ds3 %>% 
-      ggplot(aes(x = leaf_mean, y = flow_mean, color = temp_outlier, size = weights_leaf)) + geom_point(alpha = 0.5) + ggtitle(paste(focal_genus, focal_species)) +
-      geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + scale_color_viridis_d(name = "data quality")+ 
-      xlab("peak leaf out (day of year)") + ylab("peak flowering (day of year)") +
-      scale_size_continuous(range = c(0.1,2), name = "leaf out ~ temperature weights")
-    flow_leaf_outliers_plot_fig_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
-                                                 focal_genus, "_", focal_species, ".jpg")
-    ggsave(flow_leaf_outliers_plot_fig_title, flow_leaf_outliers_plot)
+  flow_leaf_outliers_plot <- ds4 %>% 
+    ggplot(aes(x = leaf_mean, y = flow_mean, color = weights_lf)) + geom_point(alpha = 0.8, size = 3) + 
+    ggtitle(paste(focal_genus, focal_species)) +
+    geom_abline(slope = 1, intercept = 0, lty = 2) + ggthemes::theme_few() + 
+    scale_color_viridis_c(name = "weights", direction = -1)+ 
+    xlab("peak leaf expansion (day of year)") + ylab("peak flowering (day of year)") +
+    geom_point(data = d_leafflowmax_join, aes(x = leaf_mean, y = flow_mean ), color = "darkred", shape = 3)
+
+  flow_leaf_outliers_plot_fig_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "fig_flow_leaf_outlier_",
+                                              focal_genus, "_", focal_species, ".jpg")
+  ggsave(flow_leaf_outliers_plot_fig_title, flow_leaf_outliers_plot)
   
   # #CDF visualization
   # ds3 %>%  # filter(weights_leaf > .8) %>%   filter(weights_flow > .8) %>% 
   #   ggplot(aes(x = dif_leaf_flow, color = temp_outlier))+   stat_ecdf(geom = "step") + theme_bw() #geom_histogram() 
-  
   #  ggplot(ds3, aes(x = t_month_1_4, y = dif_leaf_flow, size = weights_leaf)) + geom_point() + theme_bw()
-    
-    
-  #extract statistics
-  ds4 <- ds3  %>% filter(!is.na(t_month_1)) %>% 
-          rowwise() %>%  mutate(t_month_1_4 = mean(c(t_month_1, t_month_2, t_month_3, t_month_4))) %>% ungroup() #create all spring temp var
-
+  
+  
+  
   focal_fit <- lmrob(dif_leaf_flow ~ leaf_mean +
             t_month_1_4 + # + t_month_2 + t_month_3 + t_month_4 +  
             elevation_in_meters + latitude 
-            , data = ds4, weights = weights_leaf)
+            , data = ds4, weights = weights_lf)
   #summary(focal_fit)
   
       # #if the model doesn't converge, use the average spring temperature instead
@@ -762,15 +767,15 @@ for(focal_sp_i in 30:32){
 
 ### combine individual rows from each species into a single dataframe
   table_si_all <- bind_rows(table_si_all_list)
-  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250708_weights_without_D.csv")
- # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250702_weights_without_D.csv")
+  write_csv(table_si_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250709_weights_without_D.csv")
+ # table_si_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_si_all_250709_weights_without_D.csv")
   
   table_lf_all <- bind_rows(table_lf_all_list) %>% tibble::remove_rownames()
-  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250708_weights_without_D.csv")
+  write_csv(table_lf_all, "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250709_weights_without_D.csv")
   
   
 
-
+sum(table_si_all$nobs)
 
 
 

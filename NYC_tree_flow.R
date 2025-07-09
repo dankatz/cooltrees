@@ -29,7 +29,7 @@ nyc_sos <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_poin
 #   nyc_sos %>%     
 #     filter(R2 > 0.7 & dbh > 3.9) %>% 
 #     filter(n_SOS_50_7day > 0) %>% 
-#     filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+#     filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
 #     filter(tpstructur == "Full") %>% 
 #     summarize(mean_r2 = mean(R2),
 #               sd_r2 = sd(R2),
@@ -40,7 +40,7 @@ nyc_sos <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/tree_pheno_poin
 nyc_sos_percentile_sp_yr <- nyc_sos %>%     
   filter(R2 > 0.7 & dbh > 3.9) %>% 
   filter(n_SOS_50_7day > 0) %>% 
-  filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+  filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
   filter(tpstructur == "Full") %>% 
   group_by(genus, species, Year) %>%
   summarize(# nobs = n(),
@@ -53,25 +53,25 @@ nyc_sos_percentile_sp_yr <- nyc_sos %>%
             SOS_max = max(SOS_50)) 
 
 nyc_sos %>% filter(species == "Acer rubrum") %>% 
-  filter(tpconditio == "Good" | tpconditio == "Excellent") %>%
+  filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>%
   filter(tpstructur == "Full") %>%
     filter(R2 > 0.7 & dbh > 3.9) %>% 
   filter(n_SOS_50_7day > 0) %>% 
   ggplot(aes(x = SOS_50)) + geom_histogram() + facet_wrap(~Year) + theme_bw()
 
 
-### Table X: a summary of median start of spring  for each species of tree for use in the NPN analysis #sort(unique(nyc_sos$genus))
+### Table 1: a summary of SOS50 for common species in genera of potential concern #########################
 genera_to_include <- c("Acer", "Alnus", "Betula", "Carpinus", "Carya", "Celtis", "Corylus", "Fagus", 
                        "Fraxinus", "Ginkgo", "Gleditsia", "Juglans", "Liquidambar", "Morus", "Ostrya",
                        "Platanus", "Populus", "Quercus", "Salix", "Tilia", "Ulmus", "Zelkova")
 high_nobs_spp <- c("Acer platanoides", "Acer rubrum", "Acer saccharinum", "Ginkgo biloba", "Gleditsia triacanthos",
                    "Liquidambar styraciflua", "Platanus x acerifolia", "Quercus palustris", "Quercus rubra", "Tilia americana",
                    "Tilia cordata", "Tilia tomentosa", "Ulmus americana", "Zelkova serrata")
-  nyc_sos_summary <- 
+  table1_sos_summary <- 
     nyc_sos %>% 
     filter(R2 > 0.7 & dbh > 3.9) %>% 
     filter(n_SOS_50_7day > 0) %>% 
-    filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+    filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
     filter(tpstructur == "Full") %>% 
     #filter(Year == 2024) %>% 
     group_by(genus, species, Year) %>% 
@@ -95,9 +95,9 @@ high_nobs_spp <- c("Acer platanoides", "Acer rubrum", "Acer saccharinum", "Ginkg
     nyc_sos %>% 
     filter(R2 > 0.7 & dbh > 3.9) %>% 
     filter(n_SOS_50_7day > 0) %>% 
-    filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+    filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
     filter(tpstructur == "Full") %>% 
-    filter(species == "Quercus rubra")
+    filter(species == "Quercus palustris")
   
   sos50_preds_nyc_sf <- 
     fig2_focal_sp_data %>% 
@@ -149,7 +149,7 @@ high_nobs_spp <- c("Acer platanoides", "Acer rubrum", "Acer saccharinum", "Ginkg
      nyc_sos %>% 
     filter(R2 > 0.7 & dbh > 3.9) %>% 
     filter(n_SOS_50_7day > 0) %>% 
-    filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+    filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
     filter(tpstructur == "Full") %>% 
     #filter(Year == 2024) %>% 
     group_by(genus, species) %>% 
@@ -157,7 +157,7 @@ high_nobs_spp <- c("Acer platanoides", "Acer rubrum", "Acer saccharinum", "Ginkg
     filter(ntrees_nyc > 10) #exclude species with few good individuals
 
 ## species that are available from npn
-table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250708_weights_without_D.csv")
+table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/table_lf_all_250709_weights_without_D.csv")
  npn_species_available <- table_lf_all %>% filter(nobs > 10) %>% filter(!is.na(lf_dif_pred_nyc_2024_mean )) %>% 
    mutate(species = paste(genus, species),
           nobs_npn = nobs) %>%  
@@ -167,17 +167,17 @@ table_lf_all <- read_csv("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower
  nyc_npn_species_list <- left_join(nyc_sos_species_list, npn_species_available) %>% 
    mutate(species = gsub("^\\S+ ", "", species)) %>% 
    arrange(-ntrees_nyc) %>% 
-   filter( species != "montana") %>% 
-   filter(nobs_npn > 10) #print(nyc_npn_species_list, n = 30)
+   #filter( species != "montana") %>% 
+   filter(nobs_npn > 10) 
 
-#species with problems: Populus tremuloides #Quercus phellos, Populus grandidentata
+#species with problems:  Populus grandidentata
  
 #start species loop
-for(focal_sp_i in 24:26){
+for(focal_sp_i in 5:5){ # print(nyc_npn_species_list, n = 30)
   
   #inputs for loop
   focal_genus <- nyc_npn_species_list$genus[focal_sp_i] #focal_genus <-"Quercus"
-  focal_species <- nyc_npn_species_list$species[focal_sp_i] #focal_species <-"alba"
+  focal_species <- nyc_npn_species_list$species[focal_sp_i] #focal_species <-"montana"
   print(paste(focal_genus, focal_species, "started at", Sys.time()))
   
   ### load in season start date for each individual tree that we have sos estimated for
@@ -186,8 +186,8 @@ for(focal_sp_i in 24:26){
   ### filtering out records where sos is questionable
   nyc_sos_focal_sp <- nyc_sos_focal_sp_raw %>% 
     filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
-    filter(n_SOS_50_7day > 1) %>% #removing trees that didn't have at least one image within a week of sos50
-    filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+    filter(n_SOS_50_7day > 0) %>% #removing trees that didn't have at least one image within a week of sos50
+    filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
     filter(tpstructur == "Full") %>% 
     mutate(leaf_mean = SOS_50,  #to match the naming of the NPN model
            latitude = Lat) %>% 
@@ -210,17 +210,21 @@ for(focal_sp_i in 24:26){
         
         #convert the points to extract to sf
         nyc_tree_yr <- nyc_sos_focal_sp %>% filter(Year == focal_year)
-        nyc_tree_yr_sf <- nyc_tree_yr %>% st_as_sf(coords = c( "Lon", "Lat"), crs = 4326) 
         
-        #extract temperature for all points in that year
-        t_mean_nyc_months_raw <- as.data.frame(raster::extract(x = tmean_rast_d, y = nyc_tree_yr_sf)) %>% 
-          rename(t_month_1 = 1, t_month_2 = 2, t_month_3 = 3, t_month_4 = 4)
-        
-        #add temperature data back to tree data
-        t_mean_nyc_months <- bind_cols(nyc_tree_yr, t_mean_nyc_months_raw)
-
-        #combine results into a list
-        nyc_t_data_all_years_list[[focal_year_i]] <- t_mean_nyc_months
+        #catch years where there weren't any observations in that year
+        if(nrow(nyc_tree_yr) > 0){
+          nyc_tree_yr_sf <- nyc_tree_yr %>% st_as_sf(coords = c( "Lon", "Lat"), crs = 4326) 
+          
+          #extract temperature for all points in that year
+          t_mean_nyc_months_raw <- as.data.frame(raster::extract(x = tmean_rast_d, y = nyc_tree_yr_sf)) %>% 
+            rename(t_month_1 = 1, t_month_2 = 2, t_month_3 = 3, t_month_4 = 4)
+          
+          #add temperature data back to tree data
+          t_mean_nyc_months <- bind_cols(nyc_tree_yr, t_mean_nyc_months_raw)
+  
+          #combine results into a list
+          nyc_t_data_all_years_list[[focal_year_i]] <- t_mean_nyc_months
+        }
         
       } #end year loop
       
@@ -246,7 +250,7 @@ for(focal_sp_i in 24:26){
 
   ### load in focal species model from NPN data
      npn_fit <- read_rds(paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/NPN_flower_leaves/", "NPN_model_",
-                                  focal_genus, "_", focal_species, ".rds"))
+                                  focal_genus, "_", focal_species, ".rds")) #summary(npn_fit)
       
    ### predicted probability of peak flowering on each individual day
       #create predictions for prediction intervals spanning from 0% to 99% of prediction interval
@@ -535,7 +539,7 @@ for(focal_sp_i in 24:26){
  nyc_sos_fpred <- nyc_sos %>% 
    filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
    filter(n_SOS_50_7day > 1) %>% #removing trees that didn't have at least one image within a week of sos50
-   filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+   filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
    filter(tpstructur == "Full") %>% 
    dplyr::select(Point_ID, species, Year, Lon, Lat, Height, Radius, dbh, tpstructur, tpconditio, riskrating, 
           SOS_50, SOS_20, SOS_80, n_SOS_50_7day, n_SOS_50_14day,
@@ -628,7 +632,7 @@ for(focal_sp_i in 24:26){
    facet_wrap(~Year, nrow = 4)
      
  map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/fig_3_Quercus_rubra_flow_max.png")
- ggsave(filename = map_max_title, plot = fig3_map_flowmax, units = "px", width = 4000, height = 4500)
+ ggsave(filename = map_max_title, plot = fig3_map_flowmax, units = "px", width = 4000, height = 4600)
  
  
  # #version with anomalies per year
@@ -650,7 +654,7 @@ for(focal_sp_i in 24:26){
  
 
  ### Fig 4: map of Quercus species Fmax in nyc, one panel per year ############################
- focal_year_i <- 2023
+ focal_year_i <- 2020
  
  #load in nyc boundary polygon
  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
@@ -658,7 +662,7 @@ for(focal_sp_i in 24:26){
  nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= crs(nyc_boundary))
  nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
 
- oak_spp <- c("Quercus alba", "Quercus falcata", "Quercus macrocarpa", "Quercus palustris", "Quercus rubra",  "Quercus velutina")
+ oak_spp <- c("Quercus alba", "Quercus palustris", "Quercus rubra",  "Quercus velutina")
  flow_preds_nyc_peak_date_sf <- 
    nyc_sos_fpred %>% 
    filter(species %in% oak_spp) %>%  #make sure to leave a space
@@ -679,7 +683,7 @@ for(focal_sp_i in 24:26){
    geom_sf(data = nyc_boundary, fill = "white", color = "black") +
    geom_sf(data = flow_preds_nyc_peak_date_sf, aes(color = date_for_map), size = 1.3, alpha = 0.9) + 
    scale_color_gradient2(low = "springgreen4", mid = "yellow2", high = "orangered",
-                         midpoint = 19840, name = "day of year", trans = "date", na.value = NA) +
+                         midpoint = 19845, name = "day of year", trans = "date", na.value = NA) +
    # scale_color_gradient2(low = "blue", mid = "gold", high = "red", midpoint = 19840, name = "day of year", trans = "date",
    #                       na.value = NA) +
    annotation_scale(location = "br") +  # annotation_north_arrow(location = "tl") 
@@ -691,7 +695,7 @@ for(focal_sp_i in 24:26){
  
  
  ### Fig x: map of various Acer species Fmax in nyc, shown in one year ############################
- focal_year_i <- 2022
+ focal_year_i <- 2020
  
  #load in nyc boundary polygon
  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
@@ -719,12 +723,15 @@ for(focal_sp_i in 24:26){
    geom_sf(data = nyc_boundary_invert, fill = "gray94", color = "gray94") +  #
    geom_sf(data = nyc_boundary, fill = "white", color = "black") +
    geom_sf(data = flow_preds_nyc_peak_date_sf, aes(color = date_for_map), size = 1.2, alpha = 0.9) + 
-   scale_color_gradient2(low = "springgreen4", mid = "yellow2", high = "orangered",
-                         midpoint = 19820, name = "day of year", trans = "date", na.value = NA) +
+   scale_color_viridis_c(option = "turbo", #midpoint = 19820, 
+                         name = "day of year", trans = "date", na.value = NA) +
+   
+      # scale_color_gradientn(colors = c(), #midpoint = 19820, 
+   #                       name = "day of year", trans = "date", na.value = NA) +
    # scale_color_gradient2(low = "blue", mid = "gold", high = "red", midpoint = 19840, name = "day of year", trans = "date",
    #                       na.value = NA) +
    annotation_scale(location = "br") +  # annotation_north_arrow(location = "tl") 
-   facet_wrap(~species, nrow = 3)
+   facet_wrap(~species, nrow = 3) + theme(legend.position = c(0.8, 0.2))
  
  map_max_title <- paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/fig_x_Acer_spp_flow_max.png")
  ggsave(filename = map_max_title, plot = figx_map_flowmax, units = "px", width = 4000, height = 4600)
@@ -756,8 +763,8 @@ for(focal_sp_i in 24:26){
 #      scale_x_date(name = "date", limits = c( mdy("04-01-2024"),  mdy("06-01-2024"))) + ylab("predicted peak flowering (proportion)") +
 #      scale_color_viridis_d(name = "Year") + facet_wrap(~Year)
 
-### Fig X: comparing distribution of flowering times for some species ####################################
- oak_spp <- c("Quercus alba", "Quercus macrocarpa", "Quercus palustris", "Quercus rubra",  "Quercus velutina")
+### Fig X: comparing distribution of flowering times for some oak species ####################################
+ oak_spp <- c("Quercus alba", "Quercus palustris", "Quercus rubra",  "Quercus velutina")
  maple_spp <- c("Acer rubrum", "Acer saccharum", "Acer saccharinum", "Acer negundo", "Acer platanoides")
  birch_spp <- c("Betula lenta", "Betula nigra", "Betula papyrifera")
  hickory_spp <- c("Carya glabra", "Carya ovata")
@@ -772,29 +779,27 @@ for(focal_sp_i in 24:26){
    nyc_sos_fpred_long <- nyc_sos %>% 
      filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
      filter(n_SOS_50_7day > 0) %>% #removing trees that didn't have at least one image within a week of sos50
-     filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+     filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
      filter(tpstructur == "Full") %>% 
      dplyr::select(Point_ID, species, Year, Lon, Lat, Height, Radius, dbh, tpstructur, tpconditio, riskrating, 
                    SOS_50, SOS_20, SOS_80, n_SOS_50_7day, n_SOS_50_14day,
                    R2, RMSE) %>% 
      left_join(nyc_fpred_long, .)
-   # #filtering to the central 95% of the distribution to remove outliers
-   # filter(SOS_50 > SOS_p2.5,
-   #        SOS_50 < SOS_p97.5)
-   
+
    
    fig_x_plot_interannual_timing <- 
      nyc_sos_fpred_long %>% 
-     filter(species %in% maple_spp) %>% 
+     filter(species %in% oak_spp) %>% 
      #filter(species != "Quercus phellos" & species != "Quercus falcata") %>% 
      group_by(species, doy, Year) %>% 
      summarize(sum_day = sum(prop_in_day_n)) %>% 
      ggplot(aes(x = (doy + mdy("01-01-2024")), y = sum_day, color = as.factor(species))) +  
-     geom_vline(aes(xintercept = mdy("04-01-2024")), color = "gray") + 
+     geom_vline(aes(xintercept = mdy("05-1-2024")), color = "gray") + 
      geom_line(lwd = 1.1) + 
      ggthemes::theme_few() + 
-     scale_x_date(name = "date", limits = c(mdy("03-01-2024"), mdy("05-15-2024"))) + ylab("predicted flowering interval (proportion)") + 
-     scale_color_viridis_d(name = "species") +
+     scale_x_date(name = "date", limits = c(mdy("04-01-2024"), mdy("05-31-2024"))) + ylab("predicted flowering interval (proportion)") + 
+     #scale_color_viridis_d(name = "species", option = "turbo") +
+     scale_color_manual(name = "species", values = c("peru", "steelblue3", "red4", "gray10")) +
      facet_wrap(~Year, ncol = 2) + guides(color = guide_legend(theme = theme(legend.text = element_text(face = "italic"))))
    
    fig_x_plot_interannual_timing
@@ -802,6 +807,49 @@ for(focal_sp_i in 24:26){
    #                                                   focal_genus,"/", focal_species, "/plot_flowering_interannual_timing.png"), create.dir = TRUE)
    
    
+   
+ ### Fig X: comparing distribution of flowering times for some maple species ####################################
+ maple_spp <- c("Acer rubrum", "Acer saccharum", "Acer saccharinum", "Acer negundo", "Acer platanoides")
+ birch_spp <- c("Betula lenta", "Betula nigra", "Betula papyrifera")
+ hickory_spp <- c("Carya glabra", "Carya ovata")
+ 
+ 
+ #load in the long format predictions (amount per individual per day)
+ nyc_fpred_long <-
+   list.files( path = "C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_spp/long_version/", full = TRUE) %>% 
+   map_dfr(read_csv)
+ 
+ ### add back to the full sos data 
+ nyc_sos_fpred_long <- nyc_sos %>% 
+   filter(R2 > 0.7 & dbh > 3.9) %>%  #dbh is in inches so 3.9 inch = 10 cm
+   filter(n_SOS_50_7day > 0) %>% #removing trees that didn't have at least one image within a week of sos50
+   filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
+   filter(tpstructur == "Full") %>% 
+   dplyr::select(Point_ID, species, Year, Lon, Lat, Height, Radius, dbh, tpstructur, tpconditio, riskrating, 
+                 SOS_50, SOS_20, SOS_80, n_SOS_50_7day, n_SOS_50_14day,
+                 R2, RMSE) %>% 
+   left_join(nyc_fpred_long, .)
+ 
+ 
+ fig_x_plot_interannual_timing <- 
+   nyc_sos_fpred_long %>% 
+   filter(species %in% maple_spp) %>% 
+   #filter(species != "Quercus phellos" & species != "Quercus falcata") %>% 
+   group_by(species, doy, Year) %>% 
+   summarize(sum_day = sum(prop_in_day_n)) %>% 
+   ggplot(aes(x = (doy + mdy("01-01-2024")), y = sum_day, color = as.factor(species))) +  
+   geom_vline(aes(xintercept = mdy("04-1-2024")), color = "gray") + 
+   geom_line(lwd = 1.1) + 
+   ggthemes::theme_few() + 
+   scale_x_date(name = "date", limits = c(mdy("03-15-2024"), mdy("05-01-2024"))) + ylab("predicted flowering interval (proportion)") + 
+  # scale_color_viridis_d(name = "species", option = "magma") +
+   scale_color_manual(name = "species", values = c("#264653", "#2A9D8F", "#E76F51", "#E9C46A", "#6a4c93")) +
+   facet_wrap(~Year, ncol = 2) + guides(color = guide_legend(theme = theme(legend.text = element_text(face = "italic"))))
+ 
+ fig_x_plot_interannual_timing
+ # ggsave(plot_interannual_timing, filename = paste0("C:/Users/dsk273/Box/Katz lab/NYC/tree_pheno/flowering_pred_maps/",
+ #                                                   focal_genus,"/", focal_species, "/plot_flowering_interannual_timing.png"), create.dir = TRUE)
+ 
    
  #### SI section: comparison to airborne pollen concentrations ###############################################
  #Lincoln Center from Guy Robinson
@@ -865,7 +913,7 @@ for(focal_sp_i in 24:26){
          mutate(LC_dis = as.numeric(st_distance(., LC)/1000)) %>% 
          st_drop_geometry() %>% 
          filter(n_SOS_50_7day > 0) %>% 
-         filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+         filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
          filter(tpstructur == "Full") 
          #ggplot(nyc_sos_fpred_LC) +  geom_sf(aes(color = LC_dis))
        
@@ -1193,7 +1241,7 @@ for(focal_sp_i in 24:26){
     filter(species %in% focal_genus_spp) %>% 
     filter(LC_dis < dist_param) %>% 
     filter(n_SOS_50_7day > 0) %>% 
-    filter(tpconditio == "Good" | tpconditio == "Excellent") %>% 
+    filter(tpconditio == "Good" | tpconditio == "Excellent" | tpconditio == "Fair") %>% 
     filter(tpstructur == "Full") %>% 
     group_by(species, Year, focal_perc_0.5) %>% 
     summarize(total_per_day_at_peak = n()) %>% 
